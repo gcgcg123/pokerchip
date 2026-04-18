@@ -1,0 +1,795 @@
+
+                        <!DOCTYPE html>
+                        <html lang="en">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+							<style>
+								body {
+									background-color: white; /* Ensure the iframe has a white background */
+								}
+
+								
+							</style>
+                        </head>
+                        <body>
+                            <!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Chip Master - 撲克籌碼結算工具</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #1a1a1a; color: #fff; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .page { display: none; animation: fadeIn 0.5s; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Cover */
+        .cover { text-align: center; padding: 100px 20px; }
+        .btn-main { background: #e74c3c; color: white; border: none; padding: 15px 40px; font-size: 1.5em; border-radius: 50px; cursor: pointer; transition: 0.3s; }
+        .btn-main:hover { background: #c0392b; transform: scale(1.05); }
+        .btn { background: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        .btn-danger { background: #e74c3c; }
+        .btn-success { background: #2ecc71; }
+        .btn-warning { background: #f39c12; }
+        
+        /* Setup */
+        .card { background: #2c2c2c; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .input-group { margin: 10px 0; }
+        input, select { padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; }
+        
+        /* 第一點修復：籌碼分兩行排開 */
+        .chip-row { display: flex; gap: 15px; flex-wrap: wrap; margin-top: 15px; justify-content: center; }
+        .chip-box { text-align: center; background: #444; padding: 15px; border-radius: 8px; min-width: 100px; }
+        .chip-box input { width: 70px; text-align: center; font-size: 1.1em; margin-top: 8px; }
+        .chip-label { color: #f1c40f; font-weight: bold; font-size: 1.1em; }
+        
+        .balance-display { font-size: 1.3em; font-weight: bold; margin-top: 15px; padding: 10px; background: #333; border-radius: 5px; }
+        .balance-ok { color: #2ecc71; }
+        .balance-error { color: #e74c3c; }
+        
+        /* 第二點修復：橫放 Poker Table (手機友好) */
+        .poker-table-container { position: relative; width: 100%; max-width: 800px; height: 450px; margin: 0 auto; background: transparent; }
+        .poker-table { width: 100%; height: 100%; background: #27ae60; border: 12px solid #5d4037; border-radius: 225px; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .poker-table::before { content: 'POKER'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(0,0,0,0.3); font-size: 1.5em; font-weight: bold; letter-spacing: 5px; }
+        
+        .player-spot { position: absolute; background: #333; padding: 6px 10px; border-radius: 20px; font-size: 0.75em; text-align: center; min-width: 70px; border: 2px solid #f1c40f; transform: translate(-50%, -50%); z-index: 10; }
+        .player-stats { font-size: 0.65em; color: #ccc; margin-top: 3px; }
+        .player-stats div { margin: 1px 0; }
+        
+        .btn-add-player { position: absolute; top: 10px; right: 10px; z-index: 20; background: #2ecc71; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; cursor: pointer; transition: 0.3s; }
+        .btn-add-player:hover { background: #27ae60; transform: scale(1.05); }
+        .controls { text-align: center; margin-top: 20px; }
+        .borrow-controls { display: flex; justify-content: center; gap: 15px; margin: 10px 0; flex-wrap: wrap; }
+        .borrow-controls select { min-width: 120px; }
+        .transaction-log { background: #333; padding: 10px; border-radius: 5px; margin-top: 10px; max-height: 200px; overflow-y: auto; }
+        .transaction-item { background: #444; padding: 5px; margin: 5px 0; border-radius: 3px; display: flex; justify-content: space-between; }
+        
+        /* 第三點修復：手機友好表格 */
+        .mobile-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #333; font-size: 0.85em; overflow-x: auto; }
+        .mobile-table th, .mobile-table td { border: 1px solid #555; padding: 8px 4px; text-align: center; }
+        .mobile-table th { background: #444; color: #f1c40f; font-weight: 600; }
+        .mobile-table tr:nth-child(even) { background: #3a3a3a; }
+        .mobile-table tr:hover { background: #4a4a4a; }
+        .mobile-table input { width: 80px; text-align: center; }
+        .total-row { background: #1a1a1a !important; border-top: 3px double #f1c40f; }
+        .total-row td { padding: 12px 4px !important; }
+        
+        .footer { text-align: center; margin-top: 50px; color: #777; font-size: 0.9em; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; }
+        .modal-content { background: #2c2c2c; margin: 10% auto; padding: 30px; border-radius: 10px; max-width: 600px; border: 1px solid #555; }
+        
+        .profit-positive { color: #2ecc71; font-weight: bold; }
+        .profit-negative { color: #e74c3c; font-weight: bold; }
+        
+        /* 手機適配 */
+        @media (max-width: 600px) {
+            .poker-table-container { height: 350px; }
+            .player-spot { min-width: 60px; padding: 4px 8px; font-size: 0.7em; }
+            .chip-box { min-width: 80px; padding: 10px; }
+            .chip-box input { width: 60px; }
+            .mobile-table { font-size: 0.75em; }
+            .mobile-table input { width: 70px; }
+            .borrow-controls { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <!-- 封面頁 -->
+    <div id="page-cover" class="page active cover">
+        <h1>Poker Chip Master</h1>
+        <h2>撲克籌碼結算工具</h2>
+        <p>完整的籌碼管理與結算系統</p>
+        <button class="btn-main" onclick="navTo('page-setup')">RUN NOW!</button>
+        <div class="footer">Creator: Gino</div>
+    </div>
+
+    <!-- 開局前設定 (Before Starting) -->
+    <div id="page-setup" class="page">
+        <h2>Before Starting</h2>
+        <div class="card">
+            <h3>Section 1 & 2: 玩家與 Buy-in</h3>
+            <div class="input-group">
+                <input type="text" id="playerName" placeholder="玩家名稱">
+                <input type="number" id="playerBuyin" placeholder="Buy-in 金額" value="5000">
+                <button class="btn" onclick="addPlayerSetup()">加入玩家</button>
+            </div>
+            <div id="setupPlayerList"></div>
+        </div>
+
+        <div class="card">
+            <h3>Section 3 & 4: 籌碼分配方案</h3>
+            <div class="input-group">
+                <label>小盲注 (Small Blind):</label>
+                <input type="number" id="smallBlind" value="50" style="width:100px">
+                <label>大盲注 (Big Blind):</label>
+                <input type="number" id="bigBlind" value="100" style="width:100px">
+                <button class="btn" onclick="autoAllocateChips()">一鍵自動分配 (可重複點擊)</button>
+            </div>
+            <p>總籌碼目標 (Z): <span id="totalChipsTarget">0</span> | 已分配：<span id="allocatedChips">0</span></p>
+            
+            <!-- 第一點修復：籌碼分兩行排開 -->
+            <div class="chip-row" id="chipAllocation">
+                <!-- 由 JS 生成籌碼輸入框 -->
+            </div>
+            
+            <div id="balanceDisplay" class="balance-display">Balance: 0</div>
+            <button class="btn-main" id="btnOpenGame" onclick="navTo('page-game')" style="display:none; margin-top:20px;">OPEN GAME</button>
+        </div>
+    </div>
+
+    <!-- 遊戲中 (In The Game) -->
+    <div id="page-game" class="page" style="position: relative;">
+        <button class="btn-add-player" onclick="openAddPlayerModal()">+ 加入玩家</button>
+        <h2>In The Game</h2>
+        <!-- 第二點修復：橫放 Poker Table (手機友好) -->
+        <div class="poker-table-container">
+            <div class="poker-table" id="pokerTable">
+                <!-- 玩家位置由 JS 生成 -->
+            </div>
+        </div>
+        <div class="controls">
+            <h3>動態記帳</h3>
+            
+            <div class="card">
+                <h4>公共區取籌 / 歸還</h4>
+                <select id="publicPlayerSelect" style="min-width: 150px;"></select>
+                <div style="margin-top: 10px;">
+                    <button class="btn" onclick="updatePublicBorrow(1)">從公共區取籌 (+1)</button>
+                    <button class="btn" onclick="updatePublicBorrow(-1)">歸還公共區 (-1)</button>
+                </div>
+            </div>
+
+            <!-- 第二點修復：玩家選單放在公共區下方，四項置中對齊 -->
+            <div class="card">
+                <h4>玩家間借籌</h4>
+                <div class="borrow-controls">
+                    <div>
+                        <label>借出者 -1</label><br>
+                        <select id="lenderSelect" onchange="updateBorrowerSelect()"></select>
+                    </div>
+                    <div>
+                        <label>借入者 +1</label><br>
+                        <select id="borrowerSelect"></select>
+                    </div>
+                </div>
+                <button class="btn" onclick="recordPlayerBorrow()">記錄借籌</button>
+            </div>
+
+            <div class="card">
+                <h4>帳目記錄 (可刪除修正)</h4>
+                <div id="transactionLog" class="transaction-log"></div>
+            </div>
+
+            <button class="btn btn-danger" onclick="navTo('page-endgame')">End Game</button>
+        </div>
+    </div>
+
+    <!-- 結算前確認 (End Game) -->
+    <div id="page-endgame" class="page">
+        <h2>End Game</h2>
+        <div class="card">
+            <p style="color: #f1c40f; margin-bottom: 15px;">請輸入每位玩家「手上現存的籌碼總數」</p>
+            <!-- 第三點修復：手機友好表格 -->
+            <table class="mobile-table" id="endgameTable">
+                <thead>
+                    <tr>
+                        <th>玩家</th>
+                        <th>Buy-in</th>
+                        <th>公共借籌</th>
+                        <th>借入次數</th>
+                        <th>借出次數</th>
+                        <th>手上現存籌碼</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td><strong>總計</strong></td>
+                        <td id="total-buyin" colspan="2" style="text-align:center;"><strong>0</strong></td>
+                        <td colspan="2"></td>
+                        <td id="total-chips" style="text-align:center;"><strong>0</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div id="endgame-mismatch" style="color:#e74c3c; font-weight:bold; margin-top:10px; display:none;">總投入與手上籌碼總數不一致，請檢查！</div>
+            <div id="endgame-match" style="color:#2ecc71; font-weight:bold; margin-top:10px; display:none;">總數一致，可進行結算</div>
+            <button class="btn" id="runFinalCalcBtn" onclick="showFinalCalcModal()" style="display:none;">RUN FINAL CALC</button>
+        </div>
+        <button class="btn" onclick="navTo('page-game')">返回遊戲</button>
+        <div class="footer">Creator: Gino</div>
+    </div>
+
+    <!-- 最終結算 (Settlement) -->
+    <div id="page-settlement" class="page">
+        <h2>Settlement - 最終結算</h2>
+        <div class="card">
+            <div id="settlementResult"></div>
+            <table class="mobile-table" id="settlementTable">
+                <thead>
+                    <tr>
+                        <th>玩家</th>
+                        <th>總投入成本</th>
+                        <th>手上現存籌碼</th>
+                        <th>本局盈虧</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+            <div id="validationMsg" style="margin-top:15px; font-weight:bold; font-size: 1.1em;"></div>
+            <div id="errorActions" style="display:none; margin-top:15px;">
+                <button class="btn btn-warning" onclick="navTo('page-endgame')">Back (返回核算金額)</button>
+            </div>
+            <div id="successActions" style="display:none; margin-top:15px;">
+                <button class="btn btn-success" onclick="exportReport()">一鍵複製報表</button>
+            </div>
+        </div>
+        <button class="btn" onclick="resetToCover()">返回封面</button>
+        <div class="footer">Creator: Gino</div>
+    </div>
+</div>
+
+<!-- 確認視窗 -->
+<div id="confirmModal" class="modal">
+    <div class="modal-content">
+        <h3>確認結算數據</h3>
+        <div id="confirmDetails"></div>
+        <button class="btn btn-success" onclick="confirmFinalCalc()">確認無誤</button>
+        <button class="btn btn-danger" onclick="closeModal()">返回修改</button>
+    </div>
+</div>
+
+<!-- 中途加入玩家彈窗 -->
+<div id="addPlayerModal" class="modal">
+    <div class="modal-content">
+        <h3>中途加入玩家</h3>
+        <div class="input-group">
+            <input type="text" id="midGamePlayerName" placeholder="輸入玩家名稱">
+        </div>
+        <p style="margin-top:15px;">Buy-in 金額：<strong id="midGameBuyinDisplay"></strong>（與現有玩家相同）</p>
+        <button class="btn btn-success" onclick="addMidGamePlayer()">確認加入</button>
+        <button class="btn btn-danger" onclick="closeAddPlayerModal()">取消</button>
+    </div>
+</div>
+
+<script>
+    // 中途加入玩家
+    function openAddPlayerModal() {
+        if (currentBuyin === 0 && players.length > 0) {
+            currentBuyin = players[0].buyin;
+        }
+        document.getElementById('midGameBuyinDisplay').textContent = currentBuyin;
+        document.getElementById('midGamePlayerName').value = '';
+        document.getElementById('addPlayerModal').style.display = 'block';
+    }
+
+    function closeAddPlayerModal() {
+        document.getElementById('addPlayerModal').style.display = 'none';
+    }
+
+    function addMidGamePlayer() {
+        const nameInput = document.getElementById('midGamePlayerName');
+        const name = nameInput.value.trim();
+        if (!name) { alert('請輸入玩家名稱'); return; }
+        if (players.some(p => p.name === name)) { alert('玩家名稱已存在'); return; }
+        const buyin = currentBuyin || (players.length > 0 ? players[0].buyin : 0);
+        players.push({ name, buyin, publicBorrowCount: 0, borrowInCount: 0, borrowOutCount: 0, endingChips: 0, profit: 0 });
+        closeAddPlayerModal();
+        renderGameTable();
+    }
+
+    let players = [];
+    let transactions = [];
+    const chipDenoms = [1000, 500, 100, 50, 20, 10, 5];
+    let chipCounts = {};
+    let currentBuyin = 0;
+
+    // 初始化籌碼輸入框
+    function initChipInputs() {
+        const container = document.getElementById('chipAllocation');
+        container.innerHTML = '';
+        chipDenoms.forEach(denom => {
+            chipCounts[denom] = 0;
+            const div = document.createElement('div');
+            div.className = 'chip-box';
+            div.innerHTML = `
+                <div class="chip-label">${denom}</div>
+                <input type="number" id="chip-input-${denom}" value="0" min="0" onchange="updateChipCount(${denom}, this.value)" style="width:70px; text-align:center; font-size:1.1em;">
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function navTo(pageId) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(pageId).classList.add('active');
+        if(pageId === 'page-game') renderGameTable();
+        if(pageId === 'page-endgame') renderEndgameTable();
+    }
+
+    function addPlayerSetup() {
+        const name = document.getElementById('playerName').value;
+        const buyin = parseFloat(document.getElementById('playerBuyin').value) || 0;
+        if(!name) return alert('請輸入名稱');
+        
+        players.push({ 
+            name, 
+            buyin, 
+            publicBorrowCount: 0,
+            borrowInCount: 0,
+            borrowOutCount: 0,
+            endingChips: 0,
+            profit: 0
+        });
+        currentBuyin = buyin;
+        updateTotalChipsTarget();
+        document.getElementById('playerName').value = '';
+        renderSetupList();
+    }
+
+    function renderSetupList() {
+        const div = document.getElementById('setupPlayerList');
+        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${p.name} (${p.buyin})</div>`).join('');
+    }
+
+    function updateTotalChipsTarget() {
+        const total = players.reduce((sum, p) => sum + p.buyin, 0);
+        document.getElementById('totalChipsTarget').innerText = total;
+        checkBalance();
+    }
+
+    // 籌碼自動分配器
+    function autoAllocateChips() {
+        const totalChips = players.reduce((sum, p) => sum + p.buyin, 0);
+        const playerCount = players.length;
+        
+        if(totalChips === 0 || playerCount === 0) return alert('請先加入玩家並設定 Buy-in');
+
+        const perPlayer = totalChips / playerCount;
+        
+        chipDenoms.forEach(d => {
+            chipCounts[d] = 0;
+            const input = document.getElementById(`chip-input-${d}`);
+            if(input) input.value = 0;
+        });
+
+        let template = {};
+        
+        if(perPlayer >= 10000) {
+            template = { 1000: 5, 500: 4, 100: 10, 50: 4, 20: 2, 10: 1, 5: 0 };
+        } else if(perPlayer >= 5000) {
+            template = { 1000: 2, 500: 3, 100: 8, 50: 4, 20: 2, 10: 1, 5: 0 };
+        } else if(perPlayer >= 2000) {
+            template = { 1000: 1, 500: 1, 100: 5, 50: 4, 20: 2, 10: 2, 5: 0 };
+        } else {
+            template = { 1000: 0, 500: 1, 100: 2, 50: 4, 20: 5, 10: 2, 5: 0 };
+        }
+
+        let currentTotal = 0;
+        Object.keys(template).forEach(denom => {
+            const countPerPerson = template[denom];
+            const totalCount = countPerPerson * playerCount;
+            chipCounts[denom] = totalCount;
+            currentTotal += totalCount * parseInt(denom);
+        });
+
+        let diff = totalChips - currentTotal;
+        
+        while(diff !== 0) {
+            if(diff > 0) {
+                if(diff >= 500 * playerCount) {
+                    chipCounts[500] += playerCount;
+                    diff -= 500 * playerCount;
+                } else if(diff >= 100 * playerCount) {
+                    chipCounts[100] += playerCount;
+                    diff -= 100 * playerCount;
+                } else if(diff >= 50 * playerCount) {
+                    chipCounts[50] += playerCount;
+                    diff -= 50 * playerCount;
+                } else {
+                    if(diff >= 20 * playerCount) { chipCounts[20] += playerCount; diff -= 20 * playerCount; }
+                    else if(diff >= 10 * playerCount) { chipCounts[10] += playerCount; diff -= 10 * playerCount; }
+                    else if(diff >= 5 * playerCount) { chipCounts[5] += playerCount; diff -= 5 * playerCount; }
+                    else break;
+                }
+            } else {
+                if(chipCounts[100] >= playerCount && diff <= -100 * playerCount) { chipCounts[100] -= playerCount; diff += 100 * playerCount; }
+                else if(chipCounts[50] >= playerCount && diff <= -50 * playerCount) { chipCounts[50] -= playerCount; diff += 50 * playerCount; }
+                else if(chipCounts[20] >= playerCount && diff <= -20 * playerCount) { chipCounts[20] -= playerCount; diff += 20 * playerCount; }
+                else break;
+            }
+        }
+
+        chipDenoms.forEach(denom => {
+            const input = document.getElementById(`chip-input-${denom}`);
+            if(input) input.value = chipCounts[denom];
+        });
+
+        checkBalance();
+        alert('已生成新的籌碼分配方案 (已確保可被玩家數整除)');
+    }
+
+    function updateChipCount(denom, value) {
+        chipCounts[denom] = parseInt(value) || 0;
+        checkBalance();
+    }
+
+    function checkBalance() {
+        const target = players.reduce((sum, p) => sum + p.buyin, 0);
+        const current = Object.keys(chipCounts).reduce((sum, d) => sum + (d * chipCounts[d]), 0);
+        
+        const balance = target - current;
+        
+        const display = document.getElementById('balanceDisplay');
+        const allocatedDisplay = document.getElementById('allocatedChips');
+        
+        allocatedDisplay.innerText = current;
+        
+        if(balance > 0) {
+            display.innerText = `Balance: ${balance} (還需分配 ${balance})`;
+            display.className = 'balance-display balance-error';
+        } else if(balance < 0) {
+            display.innerText = `Balance: ${balance} (超出 ${Math.abs(balance)})`;
+            display.className = 'balance-display balance-error';
+        } else {
+            display.innerText = `Balance: 0 (分配正確)`;
+            display.className = 'balance-display balance-ok';
+        }
+        
+        if(balance === 0 && players.length > 0) {
+            document.getElementById('btnOpenGame').style.display = 'inline-block';
+        } else {
+            document.getElementById('btnOpenGame').style.display = 'none';
+        }
+    }
+
+    // 第二點修復：橫放 Poker Table 座位佈局 (手機友好)
+    function renderGameTable() {
+        const table = document.getElementById('pokerTable');
+        const publicSelect = document.getElementById('publicPlayerSelect');
+        const lenderSelect = document.getElementById('lenderSelect');
+        const borrowerSelect = document.getElementById('borrowerSelect');
+        
+        table.innerHTML = '';
+        publicSelect.innerHTML = '';
+        lenderSelect.innerHTML = '';
+        borrowerSelect.innerHTML = '';
+        
+        // 橫放橢圓形座位 (10 個位置) - 手機友好
+        const seats = [
+            { top: '50%', left: '5%' },    // 1 - 左側中間
+            { top: '20%', left: '15%' },   // 2 - 左上
+            { top: '10%', left: '35%' },   // 3 - 上左
+            { top: '10%', left: '65%' },   // 4 - 上右
+            { top: '20%', left: '85%' },   // 5 - 右上
+            { top: '50%', left: '95%' },   // 6 - 右側中間
+            { top: '80%', left: '85%' },   // 7 - 右下
+            { top: '90%', left: '65%' },   // 8 - 下右
+            { top: '90%', left: '35%' },   // 9 - 下左
+            { top: '80%', left: '15%' }    // 10 - 左下
+        ];
+
+        players.forEach((p, i) => {
+            const seatIndex = i % 10;
+            const pos = seats[seatIndex];
+            
+            const spot = document.createElement('div');
+            spot.className = 'player-spot';
+            spot.style.top = pos.top;
+            spot.style.left = pos.left;
+            spot.innerHTML = `
+                <div>${p.name}</div>
+                <div class="player-stats">
+                    <div>公共：${p.publicBorrowCount}</div>
+                    <div>借出：${p.borrowOutCount} | 借入：${p.borrowInCount}</div>
+                </div>
+            `;
+            table.appendChild(spot);
+
+            const option = document.createElement('option');
+            option.value = p.name;
+            option.innerText = p.name;
+            publicSelect.appendChild(option.cloneNode(true));
+            lenderSelect.appendChild(option.cloneNode(true));
+            borrowerSelect.appendChild(option.cloneNode(true));
+        });
+
+        updateBorrowerSelect();
+        renderTransactionLog();
+    }
+
+    function updateBorrowerSelect() {
+        const lenderSelect = document.getElementById('lenderSelect');
+        const borrowerSelect = document.getElementById('borrowerSelect');
+        const selectedLender = lenderSelect.value;
+        
+        borrowerSelect.innerHTML = '';
+        players.forEach(p => {
+            if(p.name !== selectedLender) {
+                const option = document.createElement('option');
+                option.value = p.name;
+                option.innerText = p.name;
+                borrowerSelect.appendChild(option);
+            }
+        });
+    }
+
+    function updatePublicBorrow(amount) {
+        const name = document.getElementById('publicPlayerSelect').value;
+        const p = players.find(x => x.name === name);
+        if(p) {
+            p.publicBorrowCount += amount;
+            if(p.publicBorrowCount < 0) p.publicBorrowCount = 0;
+            
+            transactions.push({
+                type: 'public',
+                player: name,
+                amount: amount,
+                time: new Date().toLocaleTimeString()
+            });
+            
+            renderGameTable();
+            renderTransactionLog();
+        }
+    }
+
+    function recordPlayerBorrow() {
+        const lender = document.getElementById('lenderSelect').value;
+        const borrower = document.getElementById('borrowerSelect').value;
+        
+        if(!borrower) return alert('沒有可選擇的借款人');
+        if(lender === borrower) return alert('不能借給自己');
+        
+        const lenderP = players.find(x => x.name === lender);
+        const borrowerP = players.find(x => x.name === borrower);
+        
+        if(lenderP && borrowerP) {
+            lenderP.borrowOutCount += 1;
+            borrowerP.borrowInCount += 1;
+            
+            transactions.push({
+                type: 'player',
+                lender: lender,
+                borrower: borrower,
+                time: new Date().toLocaleTimeString()
+            });
+            
+            renderGameTable();
+            renderTransactionLog();
+            alert(`記錄成功：${lender} 借給 ${borrower}`);
+        }
+    }
+
+    function renderTransactionLog() {
+        const log = document.getElementById('transactionLog');
+        log.innerHTML = '';
+        
+        transactions.forEach((t, index) => {
+            const div = document.createElement('div');
+            div.className = 'transaction-item';
+            if(t.type === 'public') {
+                div.innerHTML = `
+                    <span>${t.time} - ${t.player} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
+                    <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
+                `;
+            } else {
+                div.innerHTML = `
+                    <span>${t.time} - ${t.lender} 借給 ${t.borrower}</span>
+                    <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
+                `;
+            }
+            log.appendChild(div);
+        });
+    }
+
+    function deleteTransaction(index) {
+        const t = transactions[index];
+        if(t.type === 'public') {
+            const p = players.find(x => x.name === t.player);
+            if(p) p.publicBorrowCount -= t.amount;
+        } else {
+            const lenderP = players.find(x => x.name === t.lender);
+            const borrowerP = players.find(x => x.name === t.borrower);
+            if(lenderP) lenderP.borrowOutCount -= 1;
+            if(borrowerP) borrowerP.borrowInCount -= 1;
+        }
+        transactions.splice(index, 1);
+        renderGameTable();
+        renderTransactionLog();
+    }
+
+    function renderEndgameTable() {
+        const tbody = document.querySelector('#endgameTable tbody');
+        tbody.innerHTML = '';
+        players.forEach((p, i) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${p.name}</td>
+                <td>${p.buyin}</td>
+                <td>${p.publicBorrowCount}</td>
+                <td>${p.borrowInCount}</td>
+                <td>${p.borrowOutCount}</td>
+                <td><input type="number" id="end-chips-${i}" value="0" style="width:80px; text-align:center;" oninput="validateEndgameTotals()"></td>
+            `;
+            tbody.appendChild(tr);
+        });
+        validateEndgameTotals();
+    }
+
+    function validateEndgameTotals() {
+        let totalBuyin = 0;
+        let totalChips = 0;
+        players.forEach((p, i) => {
+            const publicCost = p.publicBorrowCount * p.buyin;
+            const borrowInCost = p.borrowInCount * p.buyin;
+            const borrowOutCredit = p.borrowOutCount * p.buyin;
+            totalBuyin += p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            totalChips += parseFloat(document.getElementById(`end-chips-${i}`).value) || 0;
+        });
+        totalBuyin = Math.round(totalBuyin);
+        totalChips = Math.round(totalChips);
+
+        document.getElementById('total-buyin').innerHTML = '<strong>' + totalBuyin + '</strong>';
+        document.getElementById('total-chips').innerHTML = '<strong>' + totalChips + '</strong>';
+
+        const match = totalBuyin === totalChips && players.length > 0;
+        document.getElementById('runFinalCalcBtn').style.display = match ? 'inline-block' : 'none';
+        document.getElementById('endgame-mismatch').style.display = (!match && players.length > 0) ? 'block' : 'none';
+        document.getElementById('endgame-match').style.display = match ? 'block' : 'none';
+    }
+
+    function showFinalCalcModal() {
+        const modal = document.getElementById('confirmModal');
+        const details = document.getElementById('confirmDetails');
+        
+        let html = '<table style="width:100%"><tr><th>玩家</th><th>公共借</th><th>借入</th><th>借出</th><th>手上籌碼</th></tr>';
+        players.forEach((p, i) => {
+            const endChips = document.getElementById(`end-chips-${i}`).value;
+            html += `<tr>
+                <td>${p.name}</td>
+                <td>${p.publicBorrowCount}</td>
+                <td>${p.borrowInCount}</td>
+                <td>${p.borrowOutCount}</td>
+                <td>${endChips}</td>
+            </tr>`;
+        });
+        html += '</table><p style="margin-top:10px">確認以上數據無誤後，將計算最終盈虧</p>';
+        
+        details.innerHTML = html;
+        modal.style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('confirmModal').style.display = 'none';
+    }
+
+    function confirmFinalCalc() {
+        closeModal();
+        calculateSettlement();
+        navTo('page-settlement');
+    }
+
+    function calculateSettlement() {
+        let totalProfit = 0;
+        const tbody = document.querySelector('#settlementTable tbody');
+        tbody.innerHTML = '';
+        const resultDiv = document.getElementById('settlementResult');
+        const errorActions = document.getElementById('errorActions');
+        const successActions = document.getElementById('successActions');
+        
+        players.forEach((p, i) => {
+            const endChips = parseFloat(document.getElementById(`end-chips-${i}`).value) || 0;
+            p.endingChips = endChips;
+
+            const publicCost = p.publicBorrowCount * p.buyin;
+            const borrowInCost = p.borrowInCount * p.buyin;
+            const borrowOutCredit = p.borrowOutCount * p.buyin;
+            
+            const totalInvested = p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            p.profit = endChips - totalInvested;
+            totalProfit += p.profit;
+
+            const tr = document.createElement('tr');
+            const profitClass = p.profit >= 0 ? 'profit-positive' : 'profit-negative';
+            const profitSign = p.profit >= 0 ? '+' : '';
+            
+            tr.innerHTML = `
+                <td>${p.name}</td>
+                <td>${totalInvested}</td>
+                <td>${endChips}</td>
+                <td class="${profitClass}">${profitSign}${p.profit}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const msg = document.getElementById('validationMsg');
+        
+        if(Math.abs(totalProfit) > 1) {
+            msg.innerText = `⚠️ 錯誤警告：損益總和不为 0 (目前為 ${totalProfit})，請檢查輸入！`;
+            msg.style.color = '#e74c3c';
+            resultDiv.innerHTML = '<h3 style="color:#e74c3c">⚠️ 數據核對失敗</h3><p>請檢查是否有籌碼遺失或輸入錯誤。</p>';
+            errorActions.style.display = 'block';
+            successActions.style.display = 'none';
+        } else {
+            msg.innerText = '✓ 核對總額：正確 (損益總和 = 0)';
+            msg.style.color = '#2ecc71';
+            resultDiv.innerHTML = '<h3 style="color:#2ecc71">✓ 數據核對成功</h3><p>所有玩家債務與盈虧已結清。</p>';
+            errorActions.style.display = 'none';
+            successActions.style.display = 'block';
+        }
+    }
+
+    function exportReport() {
+        let report = "撲克結算報表\nCreator: Gino\n================\n";
+        players.forEach(p => {
+            report += `${p.name}: 盈虧 ${p.profit}\n`;
+        });
+        navigator.clipboard.writeText(report).then(() => alert("報表已複製"));
+    }
+
+    function resetToCover() {
+        if(confirm('確定要返回封面並重置所有數據嗎？')) {
+            players = [];
+            transactions = [];
+            chipDenoms.forEach(d => chipCounts[d] = 0);
+            currentBuyin = 0;
+            
+            document.getElementById('playerName').value = '';
+            document.getElementById('playerBuyin').value = '5000';
+            document.getElementById('setupPlayerList').innerHTML = '';
+            document.getElementById('totalChipsTarget').innerText = '0';
+            document.getElementById('allocatedChips').innerText = '0';
+            document.getElementById('balanceDisplay').innerText = 'Balance: 0';
+            document.getElementById('btnOpenGame').style.display = 'none';
+            document.getElementById('transactionLog').innerHTML = '';
+            document.getElementById('settlementResult').innerHTML = '';
+            document.getElementById('validationMsg').innerText = '';
+            document.getElementById('errorActions').style.display = 'none';
+            document.getElementById('successActions').style.display = 'none';
+            
+            chipDenoms.forEach(denom => {
+                const input = document.getElementById(`chip-input-${denom}`);
+                if(input) input.value = 0;
+            });
+            
+            navTo('page-cover');
+        }
+    }
+
+    initChipInputs();
+</script>
+
+</body>
+</html>
+
+							<script>
+                            	
+							</script>
+                        </body>
+                        </html>
+                    
