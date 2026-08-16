@@ -94,6 +94,15 @@
             .mobile-table input { width: 70px; }
             .borrow-controls { flex-direction: column; align-items: center; }
         }
+
+        /* T06：分級儲存提示（toast / 橫幅 / modal）*/
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 12px 20px; border-radius: 6px; border: 1px solid #f39c12; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.3s; max-width: 90%; text-align: center; }
+        .toast.show { opacity: 1; }
+        #privacyBanner { position: fixed; top: 0; left: 0; right: 0; background: #f39c12; color: #1a1a1a; padding: 10px 16px; font-size: 0.9em; z-index: 200; display: none; }
+        #privacyBanner button { float: right; background: rgba(0,0,0,0.2); color: #fff; border: none; padding: 2px 10px; border-radius: 4px; cursor: pointer; }
+        #recoveryBanner { position: fixed; top: 0; left: 0; right: 0; background: #e74c3c; color: #fff; padding: 10px 16px; font-size: 0.9em; z-index: 200; display: none; }
+        #recoveryBanner button { background: #fff; color: #e74c3c; border: none; padding: 3px 12px; border-radius: 4px; cursor: pointer; margin-left: 8px; }
+        #spectatorBanner { position: fixed; top: 0; left: 0; right: 0; background: #3498db; color: #fff; padding: 10px 16px; font-size: 0.9em; z-index: 201; display: none; }
     </style>
 </head>
 
@@ -186,6 +195,7 @@
                 <div id="transactionLog" class="transaction-log"></div>
             </div>
 
+            <button class="btn btn-warning" onclick="undo()">↶ 復原上一步</button>
             <button class="btn btn-danger" onclick="navTo('page-endgame')">End Game</button>
         </div>
     </div>
@@ -254,6 +264,12 @@
     </div>
 </div>
 
+<!-- T06：分級儲存提示 -->
+<div id="toast" class="toast"></div>
+<div id="privacyBanner">⚠️ 此環境無法自動存檔（隱私模式），請勿鎖屏，資料僅存於記憶體。<button onclick="document.getElementById('privacyBanner').style.display='none'">OK</button></div>
+<div id="recoveryBanner">⚠️ 讀取到舊版或損毀存檔，已備份並以全新狀態開啟。<button onclick="exportBackup()">匯出備份檔</button><button onclick="document.getElementById('recoveryBanner').style.display='none'">關閉</button></div>
+<div id="spectatorBanner">👁 此牌局已在另一個分頁開啟（唯讀模式），編輯請回到該分頁。</div>
+
 <!-- 確認視窗 -->
 <div id="confirmModal" class="modal">
     <div class="modal-content">
@@ -277,6 +293,545 @@
     </div>
 </div>
 
+<!-- pokerchip-state.js（純邏輯核心，內聯以維持單檔部署；本地另有 pokerchip-state.js 供 Node 測試） -->
+<script>
+/*
+ * pokerchip-state.js — 純邏輯核心模組（T01）
+ * 不依賴 DOM、不直接存取 localStorage；透過 storage adapter 介面存取。
+ * UMD：Node 透過 module.exports，瀏覽器透過 window.PokerChipState 載入。
+ *
+ * Adapter 介面（最小子集，對應 localStorage）：
+ *   { getItem(key)->string|null, setItem(key, value), removeItem(key) }
+ */
+(function (root, factory) {
+    if (typeof module === 'object' && module && module.exports) {
+        module.exports = factory();
+    } else {
+        root.PokerChipState = factory();
+    }
+}(typeof self !== 'undefined' ? self : this, function () {
+
+    var SCHEMA_VERSION = 3;
+
+    var KEYS = {
+        META: 'pokerchip:meta',
+        CURRENT_GAME: 'pokerchip:currentGame',
+        UNDO_STACK: 'pokerchip:undoStack',
+        HISTORY: 'pokerchip:history',
+        PRESETS: 'pokerchip:presets',
+        LOCK: 'pokerchip:lock'
+    };
+
+    function genId() {
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID();
+            }
+        } catch (e) { /* fall through */ }
+        return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    }
+
+    function now() { return Date.now(); }
+
+    function createDefaultMeta() {
+        return {
+            schemaVersion: SCHEMA_VERSION,
+            settings: { historyCap: 5, undoCap: 20, undoBytesBudget: 200000 }
+        };
+    }
+
+    function createDefaultCurrentGame() {
+        return {
+            schemaVersion: SCHEMA_VERSION,
+            gameId: genId(),
+            phase: 'setup',
+            createdAt: now(),
+            updatedAt: now(),
+            smallBlind: 50,
+            bigBlind: 100,
+            buyin: 0,
+            players: [],
+            chipAllocation: {},
+            transactions: []
+        };
+    }
+
+    // shape 校驗（鬆但真實）：確保 load 回來的結構可用
+    function validateCurrentGame(obj) {
+        if (!obj || typeof obj !== 'object') return false;
+        if (!Array.isArray(obj.players)) return false;
+        if (!obj.chipAllocation || typeof obj.chipAllocation !== 'object') return false;
+        if (!Array.isArray(obj.transactions)) return false;
+        if (typeof obj.buyin !== 'number') return false;
+        if (typeof obj.smallBlind !== 'number' || typeof obj.bigBlind !== 'number') return false;
+        if (typeof obj.phase !== 'string') return false;
+        return true;
+    }
+
+    // v1 -> v2：把「虛擬前持久化」形狀包成 v2 currentGame。
+    // v1 形狀：{ players, transactions, chipCounts, currentBuyin, smallBlind, bigBlind, activePage }（無 schemaVersion）。
+    function migrateV1toV2(v1) {
+        var phaseMap = {
+            'page-cover': 'setup', 'page-setup': 'setup', 'page-game': 'game',
+            'page-endgame': 'endgame', 'page-settlement': 'settlement'
+        };
+        var phase = phaseMap[v1.activePage] || (v1.phase || 'setup');
+        var players = Array.isArray(v1.players) ? v1.players.map(function (p) { return Object.assign({}, p); }) : [];
+        var buyin = (typeof v1.currentBuyin === 'number' && v1.currentBuyin)
+            ? v1.currentBuyin
+            : (players[0] && players[0].buyin) || 0;
+        var chipAllocation = (v1.chipCounts && typeof v1.chipCounts === 'object')
+            ? Object.assign({}, v1.chipCounts) : {};
+        var transactions = Array.isArray(v1.transactions)
+            ? v1.transactions.map(function (t) { return Object.assign({}, t); }) : [];
+        return {
+            schemaVersion: 2,
+            gameId: genId(),
+            phase: phase,
+            createdAt: v1.createdAt || now(),
+            updatedAt: now(),
+            smallBlind: typeof v1.smallBlind === 'number' ? v1.smallBlind : 50,
+            bigBlind: typeof v1.bigBlind === 'number' ? v1.bigBlind : 100,
+            buyin: buyin,
+            players: players,
+            chipAllocation: chipAllocation,
+            transactions: transactions
+        };
+    }
+
+    // v2 -> v3：為玩家補 uuid 主鍵；把 name-based 交易 remap 成 id-based（T04）。
+    // 重名時以 first-match 映射（T01 允許重名，屬既有資料限制；T04 起新增禁止重名）。
+    function migrateV2toV3(obj) {
+        var players = Array.isArray(obj.players) ? obj.players.map(function (p) {
+            var np = Object.assign({}, p);
+            if (!np.id) np.id = genId();
+            return np;
+        }) : [];
+        var byName = {};
+        players.forEach(function (p) { if (p.name && !(p.name in byName)) byName[p.name] = p.id; });
+        var transactions = Array.isArray(obj.transactions) ? obj.transactions.map(function (t) {
+            var nt = Object.assign({}, t);
+            if (nt.type === 'public') {
+                if (!nt.playerId && nt.player) nt.playerId = byName[nt.player];
+            } else if (nt.type === 'player') {
+                if (!nt.lenderId && nt.lender) nt.lenderId = byName[nt.lender];
+                if (!nt.borrowerId && nt.borrower) nt.borrowerId = byName[nt.borrower];
+            }
+            return nt;
+        }) : [];
+        return Object.assign({}, obj, { schemaVersion: 3, players: players, transactions: transactions });
+    }
+
+    // 單步遷移 v -> v+1（loadCurrentGame 逐版迴圈呼叫，完整鏈屬 T02 擴充）
+    function migrateStep(obj, fromVersion) {
+        if (fromVersion === 1) return migrateV1toV2(obj);
+        if (fromVersion === 2) return migrateV2toV3(obj);
+        return obj;
+    }
+
+    // 載入 currentGame：回傳 { state, status }
+    // status ∈ 'ok' | 'migrated' | 'corrupt' | 'empty'
+    // corrupt 時回傳預設狀態；備份與重置屬 02 票（本票不寫回）。
+    function loadCurrentGame(adapter) {
+        var raw;
+        try { raw = adapter.getItem(KEYS.CURRENT_GAME); }
+        catch (e) { return { state: createDefaultCurrentGame(), status: 'corrupt' }; }
+        if (raw === null || raw === undefined || raw === '') {
+            return { state: createDefaultCurrentGame(), status: 'empty' };
+        }
+        var obj;
+        try { obj = JSON.parse(raw); }
+        catch (e) { return { state: createDefaultCurrentGame(), status: 'corrupt' }; }
+
+        var ver = (obj && typeof obj.schemaVersion === 'number') ? obj.schemaVersion : 1;
+        var migrated = false;
+        while (ver < SCHEMA_VERSION) {
+            try { obj = migrateStep(obj, ver); ver = obj.schemaVersion; migrated = true; }
+            catch (e) { return { state: createDefaultCurrentGame(), status: 'corrupt' }; }
+        }
+        if (!validateCurrentGame(obj)) {
+            return { state: createDefaultCurrentGame(), status: 'corrupt' };
+        }
+        return { state: obj, status: migrated ? 'migrated' : 'ok' };
+    }
+
+    function serializeCurrentGame(state) {
+        state.schemaVersion = SCHEMA_VERSION;
+        state.updatedAt = now();
+        return JSON.stringify(state);
+    }
+
+    function saveCurrentGame(adapter, state) {
+        adapter.setItem(KEYS.CURRENT_GAME, serializeCurrentGame(state));
+    }
+
+    function loadMeta(adapter) {
+        var raw;
+        try { raw = adapter.getItem(KEYS.META); }
+        catch (e) { return { state: createDefaultMeta(), status: 'corrupt' }; }
+        if (raw === null || raw === undefined || raw === '') {
+            return { state: createDefaultMeta(), status: 'empty' };
+        }
+        var obj;
+        try { obj = JSON.parse(raw); }
+        catch (e) { return { state: createDefaultMeta(), status: 'corrupt' }; }
+        if (!obj || typeof obj !== 'object' || typeof obj.schemaVersion !== 'number') {
+            return { state: createDefaultMeta(), status: 'corrupt' };
+        }
+        return { state: obj, status: 'ok' };
+    }
+
+    function saveMeta(adapter, meta) {
+        meta.schemaVersion = SCHEMA_VERSION;
+        adapter.setItem(KEYS.META, JSON.stringify(meta));
+    }
+
+    // ===== T04：uuid 主鍵相關純邏輯 helper（可測，不依賴 DOM）=====
+    function newPlayer(name, buyin) {
+        return {
+            id: genId(),
+            name: name,
+            buyin: buyin,
+            publicBorrowCount: 0,
+            borrowInCount: 0,
+            borrowOutCount: 0,
+            endingChips: 0,
+            profit: 0
+        };
+    }
+
+    function hasDuplicateName(players, name) {
+        return Array.isArray(players) && players.some(function (p) {
+            return p && p.name === name;
+        });
+    }
+
+    function findPlayerById(players, id) {
+        if (!Array.isArray(players)) return undefined;
+        for (var i = 0; i < players.length; i++) {
+            if (players[i] && players[i].id === id) return players[i];
+        }
+        return undefined;
+    }
+
+    function makePublicTransaction(playerId, amount, time, prePublicBorrowCount) {
+        return { id: genId(), type: 'public', playerId: playerId, amount: amount, time: time, prePublicBorrowCount: prePublicBorrowCount };
+    }
+
+    function makePlayerTransaction(lenderId, borrowerId, time, preLenderBorrowOut, preBorrowerBorrowIn) {
+        return { id: genId(), type: 'player', lenderId: lenderId, borrowerId: borrowerId, time: time, preLenderBorrowOut: preLenderBorrowOut, preBorrowerBorrowIn: preBorrowerBorrowIn };
+    }
+
+    // T08：快照還原式刪除（修 Bug B/G）。優先還原交易當下的 pre 計數；
+    // 舊交易無 pre 欄位（v3 以前）則退回反向套用，保持舊資料可刪。
+    function applyDeleteTransaction(players, tx) {
+        if (tx.type === 'public') {
+            var p = findPlayerById(players, tx.playerId);
+            if (!p) return;
+            if (typeof tx.prePublicBorrowCount === 'number') p.publicBorrowCount = tx.prePublicBorrowCount;
+            else p.publicBorrowCount -= tx.amount;
+        } else {
+            var l = findPlayerById(players, tx.lenderId);
+            var b = findPlayerById(players, tx.borrowerId);
+            if (typeof tx.preLenderBorrowOut === 'number' && l) l.borrowOutCount = tx.preLenderBorrowOut;
+            else if (l) l.borrowOutCount -= 1;
+            if (typeof tx.preBorrowerBorrowIn === 'number' && b) b.borrowInCount = tx.preBorrowerBorrowIn;
+            else if (b) b.borrowInCount -= 1;
+        }
+    }
+
+    // ===== T07：籌碼自動分配（純函式，Bug C 配平修正）=====
+    // 業務規則：所有人 buy-in 相同，只需保證「該 buy-in 的籌碼組合能被 1 人完美配平」。
+    // 演算法：先給小面額（<=100）各 4 張做為找零/盲注用（不足則按比例縮減），
+    //        再以遞減面額貪婪補到剛好 buyin。buyin 是最小面額倍數 → 必可閉合到 0。
+    // 回傳 { balanceable, chipAllocation, perPlayer, reason }
+    //   balanceable=true 時 chipAllocation = perPlayer × playerCount，總值 = buyin×playerCount（balance=0）
+    //   reason ∈ 'ok' | 'no-players' | 'no-buyin' | 'unbalanceable'（buyin 非最小面額倍數）
+    function autoAllocate(buyin, playerCount, denoms) {
+        denoms = denoms || [1000, 500, 100, 50, 20, 10, 5];
+        if (!playerCount || playerCount <= 0) {
+            return { balanceable: false, chipAllocation: {}, perPlayer: {}, reason: 'no-players' };
+        }
+        if (!buyin || buyin <= 0) {
+            return { balanceable: false, chipAllocation: {}, perPlayer: {}, reason: 'no-buyin' };
+        }
+        var minDenom = denoms[denoms.length - 1];
+        if (buyin % minDenom !== 0) {
+            return { balanceable: false, chipAllocation: {}, perPlayer: {}, reason: 'unbalanceable' };
+        }
+        var perPlayer = {};
+        denoms.forEach(function (d) { perPlayer[d] = 0; });
+        var remaining = buyin;
+        // 1) 小面額（<=100）各 4 張做零錢，按剩餘比例縮減
+        var small = denoms.filter(function (d) { return d <= 100; }).sort(function (a, b) { return a - b; });
+        small.forEach(function (d) {
+            var use = Math.min(4, Math.floor(remaining / d));
+            perPlayer[d] += use;
+            remaining -= use * d;
+        });
+        // 2) 遞減面額貪婪補平
+        var desc = denoms.slice().sort(function (a, b) { return b - a; });
+        for (var i = 0; i < desc.length && remaining > 0; i++) {
+            var d = desc[i];
+            if (d > remaining) continue;
+            var cnt = Math.floor(remaining / d);
+            perPlayer[d] += cnt;
+            remaining -= cnt * d;
+        }
+        var chipAllocation = {};
+        denoms.forEach(function (d) { chipAllocation[d] = perPlayer[d] * playerCount; });
+        return { balanceable: true, chipAllocation: chipAllocation, perPlayer: perPlayer, reason: 'ok' };
+    }
+
+    // ===== T03：存檔節奏控制器（可注入計時器，可測）=====
+    // schedule()  = 標記 dirty + debounce 後存（一般變動用）
+    // flush()     = 取消待跑 debounce，若 dirty 立即存（pagehide/visibilitychange 用）
+    // milestone() = 不經 debounce 立即存並清 dirty（開局/結算/加減玩家/重置 用）
+    // saveNow()   = 注入的實際存檔回呼（由呼叫端提供，含 cover/empty 判定）
+    function createSaver(config) {
+        config = config || {};
+        var debounceMs = config.debounceMs || 600;
+        var scheduleFn = config.schedule || function (fn, ms) { return setTimeout(fn, ms); };
+        var cancelFn = config.cancel || function (token) { clearTimeout(token); };
+        var saveNow = config.saveNow || function () {};
+        var timer = null;
+        var dirty = false;
+
+        function clearTimer() { if (timer !== null) { cancelFn(timer); timer = null; } }
+        function doSave() { timer = null; if (dirty) { dirty = false; saveNow(); } }
+
+        return {
+            schedule: function () { dirty = true; clearTimer(); timer = scheduleFn(doSave, debounceMs); },
+            flush: function () { clearTimer(); if (dirty) { dirty = false; saveNow(); } },
+            milestone: function () { clearTimer(); dirty = false; saveNow(); },
+            isDirty: function () { return dirty; },
+            hasPending: function () { return timer !== null; }
+        };
+    }
+
+    // ===== T06：history / undo 存取 + 配額退避 + 雙層淘汰 =====
+    function loadHistory(adapter) {
+        var raw;
+        try { raw = adapter.getItem(KEYS.HISTORY); } catch (e) { return []; }
+        if (!raw) return [];
+        try { var a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+    }
+    function saveHistory(adapter, arr) { adapter.setItem(KEYS.HISTORY, JSON.stringify(arr)); }
+
+    // FIFO append：超過 cap 丟最舊；回傳 { history, dropped }
+    function appendHistory(adapter, entry, cap) {
+        var hist = loadHistory(adapter);
+        hist.push(entry);
+        var dropped = 0;
+        while (hist.length > cap) { hist.shift(); dropped++; }
+        saveHistory(adapter, hist);
+        return { history: hist, dropped: dropped };
+    }
+
+    function loadUndoStack(adapter) {
+        var raw;
+        try { raw = adapter.getItem(KEYS.UNDO_STACK); } catch (e) { return []; }
+        if (!raw) return [];
+        try { var a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+    }
+    function saveUndoStack(adapter, arr) { adapter.setItem(KEYS.UNDO_STACK, JSON.stringify(arr)); }
+
+    function byteSize(arr) { try { return JSON.stringify(arr).length; } catch (e) { return 0; } }
+
+    // push undo 快照：受「張數上限」與「位元組預算」雙控，超過則丟最舊；回傳 { stack, dropped }
+    function pushUndo(adapter, snapshot, cap, bytesBudget) {
+        var stack = loadUndoStack(adapter);
+        stack.push(snapshot);
+        var dropped = 0;
+        while (stack.length > 0 && (stack.length > cap || byteSize(stack) > bytesBudget)) {
+            stack.shift(); dropped++;
+        }
+        saveUndoStack(adapter, stack);
+        return { stack: stack, dropped: dropped };
+    }
+
+    function isQuotaError(e) {
+        if (!e) return false;
+        if (e.name === 'QuotaExceededError') return true;
+        if (e.code === 22) return true;
+        return /quota/i.test(String(e.message || ''));
+    }
+
+    // 配額退避寫入：嘗試 setItem；遇 QuotaExceededError 用 evictFns（回傳剪掉數）逐一修剪再重試，
+    // 直到成功或無可剪。非 quota 例外（隱私模式）直接 rethrow 由呼叫端處理。
+    // 回傳 { ok, evicted, reason }
+    function saveWithEviction(adapter, key, value, evictFns) {
+        evictFns = evictFns || [];
+        try { adapter.setItem(key, value); return { ok: true, evicted: 0 }; }
+        catch (e) {
+            if (!isQuotaError(e)) throw e;
+            var evicted = 0;
+            while (true) {
+                var trimmed = 0;
+                for (var i = 0; i < evictFns.length; i++) {
+                    var d = evictFns[i]();
+                    if (d > 0) { trimmed += d; break; }
+                }
+                if (trimmed === 0) break;
+                evicted += trimmed;
+                try { adapter.setItem(key, value); return { ok: true, evicted: evicted }; }
+                catch (e2) { if (!isQuotaError(e2)) throw e2; }
+            }
+            return { ok: false, evicted: evicted, reason: 'quota' };
+        }
+    }
+
+    // 製作 evictor：修剪某鍵最舊一筆，不低於 floor；回傳剪掉數（0 表已到底）
+    function makeEvictor(adapter, loadFn, saveFn, floor) {
+        floor = (floor == null) ? 0 : floor;
+        return function () {
+            var arr = loadFn(adapter);
+            if (arr.length > floor) {
+                arr.shift();
+                try { saveFn(adapter, arr); } catch (e) { return 0; } // 連修剪都寫不進去 → 視為無可剪
+                return 1;
+            }
+            return 0;
+        };
+    }
+
+    // ===== T09：結算歸檔 → history（衍生快照 + 冪等去重 + FIFO）=====
+    // 從 currentGame 衍生歷史紀錄（含每人 totalInvested/endingChips/profit 與總計）
+    function buildHistoryEntry(currentGame) {
+        var ps = (currentGame && currentGame.players) ? currentGame.players : [];
+        var players = ps.map(function (p) {
+            var publicCost = p.publicBorrowCount * p.buyin;
+            var borrowInCost = p.borrowInCount * p.buyin;
+            var borrowOutCredit = p.borrowOutCount * p.buyin;
+            var totalInvested = p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            return {
+                id: p.id, name: p.name, buyin: p.buyin,
+                totalInvested: totalInvested, endingChips: p.endingChips, profit: p.profit
+            };
+        });
+        var totals = { totalInvested: 0, totalChips: 0, totalProfit: 0 };
+        players.forEach(function (p) {
+            totals.totalInvested += p.totalInvested;
+            totals.totalChips += p.endingChips;
+            totals.totalProfit += p.profit;
+        });
+        return {
+            gameId: currentGame.gameId,
+            date: now(),
+            buyin: currentGame.buyin,
+            smallBlind: currentGame.smallBlind,
+            bigBlind: currentGame.bigBlind,
+            players: players,
+            totals: totals,
+            settledAt: now()
+        };
+    }
+
+    // 歸檔：同 gameId 已存在則覆蓋（冪等去重），否則 FIFO append（受 cap 限制）
+    // 回傳 { history, appended, dropped, dedup }
+    function archiveCurrentGame(adapter, currentGame, cap) {
+        var entry = buildHistoryEntry(currentGame);
+        var hist = loadHistory(adapter);
+        var existing = -1;
+        for (var i = 0; i < hist.length; i++) { if (hist[i].gameId === entry.gameId) { existing = i; break; } }
+        if (existing >= 0) {
+            hist[existing] = entry;
+            saveHistory(adapter, hist);
+            return { history: hist, appended: false, dropped: 0, dedup: true };
+        }
+        var r = appendHistory(adapter, entry, cap);
+        return { history: r.history, appended: true, dropped: r.dropped, dedup: false };
+    }
+
+    // ===== T02：壞檔備份 =====
+    // 把 srcKey 的原始字串複製到 pokerchip:backup:<ts>，回傳 backup key（無可備份則 null）
+    function backupKey(adapter, srcKey) {
+        var raw;
+        try { raw = adapter.getItem(srcKey); } catch (e) { return null; }
+        if (raw === null || raw === undefined || raw === '') return null;
+        var bk = 'pokerchip:backup:' + now();
+        try { adapter.setItem(bk, raw); } catch (e) { return null; }
+        return bk;
+    }
+
+    // ===== T05：多分頁 heartbeat 活鎖（可注入 now，可測）=====
+    function loadLock(adapter) {
+        var raw;
+        try { raw = adapter.getItem(KEYS.LOCK); } catch (e) { return null; }
+        if (!raw) return null;
+        try { var o = JSON.parse(raw); return (o && typeof o === 'object') ? o : null; } catch (e) { return null; }
+    }
+    function saveLock(adapter, lock) { adapter.setItem(KEYS.LOCK, JSON.stringify(lock)); }
+    function clearLock(adapter) { try { adapter.removeItem(KEYS.LOCK); } catch (e) {} }
+
+    // 鎖是否活著：heartbeat 在 timeoutMs 內
+    function isLockActive(lock, nowTs, timeoutMs) {
+        return !!(lock && typeof lock.heartbeat === 'number' && (nowTs - lock.heartbeat) < timeoutMs);
+    }
+
+    // 嘗試取得鎖：無活鎖（或已過期）→ 取得 active；活鎖存在且非自己 → spectator
+    // 回傳 { acquired, role: 'active'|'spectator', lock }
+    function tryAcquireLock(adapter, tabId, nowTs, timeoutMs) {
+        var existing = loadLock(adapter);
+        if (isLockActive(existing, nowTs, timeoutMs) && existing.tabId !== tabId) {
+            return { acquired: false, role: 'spectator', lock: existing };
+        }
+        var lock = { tabId: tabId, acquiredAt: nowTs, heartbeat: nowTs };
+        saveLock(adapter, lock);
+        return { acquired: true, role: 'active', lock: lock };
+    }
+
+    // 更新 heartbeat；若鎖已非自己（被接手）→ 回傳 false（呼叫端應退為 spectator）
+    function refreshHeartbeat(adapter, tabId, nowTs) {
+        var existing = loadLock(adapter);
+        if (existing && existing.tabId === tabId) {
+            existing.heartbeat = nowTs;
+            saveLock(adapter, existing);
+            return true;
+        }
+        return false;
+    }
+
+    return {
+        SCHEMA_VERSION: SCHEMA_VERSION,
+        KEYS: KEYS,
+        genId: genId,
+        now: now,
+        createDefaultMeta: createDefaultMeta,
+        createDefaultCurrentGame: createDefaultCurrentGame,
+        validateCurrentGame: validateCurrentGame,
+        migrateStep: migrateStep,
+        loadCurrentGame: loadCurrentGame,
+        saveCurrentGame: saveCurrentGame,
+        serializeCurrentGame: serializeCurrentGame,
+        loadMeta: loadMeta,
+        saveMeta: saveMeta,
+        // T04
+        newPlayer: newPlayer,
+        hasDuplicateName: hasDuplicateName,
+        findPlayerById: findPlayerById,
+        makePublicTransaction: makePublicTransaction,
+        makePlayerTransaction: makePlayerTransaction,
+        applyDeleteTransaction: applyDeleteTransaction,
+        // T07
+        autoAllocate: autoAllocate,
+        // T03
+        createSaver: createSaver,
+        // T06
+        loadHistory: loadHistory, saveHistory: saveHistory, appendHistory: appendHistory,
+        loadUndoStack: loadUndoStack, saveUndoStack: saveUndoStack, pushUndo: pushUndo,
+        byteSize: byteSize, isQuotaError: isQuotaError, saveWithEviction: saveWithEviction,
+        makeEvictor: makeEvictor,
+        // T09
+        buildHistoryEntry: buildHistoryEntry, archiveCurrentGame: archiveCurrentGame,
+        // T02
+        backupKey: backupKey,
+        // T05
+        loadLock: loadLock, saveLock: saveLock, clearLock: clearLock,
+        isLockActive: isLockActive, tryAcquireLock: tryAcquireLock, refreshHeartbeat: refreshHeartbeat
+    };
+}));
+</script>
 <script>
     // 中途加入玩家
     function openAddPlayerModal() {
@@ -298,9 +853,11 @@
         if (!name) { alert('請輸入玩家名稱'); return; }
         if (players.some(p => p.name === name)) { alert('玩家名稱已存在'); return; }
         const buyin = currentBuyin || (players.length > 0 ? players[0].buyin : 0);
-        players.push({ name, buyin, publicBorrowCount: 0, borrowInCount: 0, borrowOutCount: 0, endingChips: 0, profit: 0 });
+        pushUndoSnapshot('add-mid-player');
+        players.push(PokerChipState.newPlayer(name, buyin));
         closeAddPlayerModal();
         renderGameTable();
+        saver.milestone();
     }
 
     let players = [];
@@ -308,6 +865,209 @@
     const chipDenoms = [1000, 500, 100, 50, 20, 10, 5];
     let chipCounts = {};
     let currentBuyin = 0;
+
+    // ===== T01：Storage adapter + 持久化/還原 =====
+    const storageAdapter = {
+        getItem: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+        setItem: (k, v) => { localStorage.setItem(k, v); },
+        removeItem: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    let currentGameId = null;
+    let gameCreatedAt = 0;
+    let restoring = false;  // 還原期間暫停 persist，避免 render 流程回寫
+    let isSpectator = false; // T05：唯讀分頁模式（不寫入 storage）
+
+    const PHASE_TO_PAGE = { cover:'page-cover', setup:'page-setup', game:'page-game', endgame:'page-endgame', settlement:'page-settlement' };
+    const PAGE_TO_PHASE = { 'page-cover':'cover','page-setup':'setup','page-game':'game','page-endgame':'endgame','page-settlement':'settlement' };
+
+    function activePhase() {
+        const el = document.querySelector('.page.active');
+        return el ? (PAGE_TO_PHASE[el.id] || 'setup') : 'setup';
+    }
+
+    function buildCurrentGame() {
+        return {
+            schemaVersion: PokerChipState.SCHEMA_VERSION,
+            gameId: currentGameId || (currentGameId = PokerChipState.genId()),
+            phase: activePhase(),
+            createdAt: gameCreatedAt || (gameCreatedAt = PokerChipState.now()),
+            updatedAt: PokerChipState.now(),
+            smallBlind: parseFloat(document.getElementById('smallBlind').value) || 0,
+            bigBlind: parseFloat(document.getElementById('bigBlind').value) || 0,
+            buyin: currentBuyin,
+            players: players.map(p => ({ ...p })),
+            chipAllocation: { ...chipCounts },
+            transactions: transactions.map(t => ({ ...t }))
+        };
+    }
+
+    // T06：淘汰器（undo 可剪到 0；history 保留最近 1 局）
+    const undoEvictor = PokerChipState.makeEvictor(storageAdapter, PokerChipState.loadUndoStack, PokerChipState.saveUndoStack, 0);
+    const historyEvictor = PokerChipState.makeEvictor(storageAdapter, PokerChipState.loadHistory, PokerChipState.saveHistory, 1);
+
+    // T06：分級儲存提示
+    let privacyNotified = false;
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    }
+    function showPrivacyBanner() {
+        const b = document.getElementById('privacyBanner');
+        if (b) b.style.display = 'block';
+    }
+    function showStorageHardFail() {
+        // 阻塞提示：完整「匯出/清理」UI 屬階段四 Export/Import 與階段三歷史頁，先以提示為主
+        alert('⚠️ 儲存空間已滿，無法自動存檔。請清理歷史或匯出備份後再繼續（匯出/清理功能將於後續階段提供）。');
+    }
+
+    // T02：壞檔恢復橫幅 + 備份匯出逃生口
+    let lastBackupKey = null;
+    function showRecoveryBanner(backupKey) {
+        lastBackupKey = backupKey;
+        const b = document.getElementById('recoveryBanner');
+        if (b) b.style.display = 'block';
+    }
+    function exportBackup() {
+        if (!lastBackupKey) return;
+        const raw = storageAdapter.getItem(lastBackupKey);
+        if (raw == null) { alert('備份資料已不存在'); return; }
+        const blob = new Blob([raw], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'pokerchip-backup.json';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // 同步存檔（作為 saver 的 saveNow；含 cover/empty 清除 + T06 配額退避與分級提示）
+    function persist() {
+        if (restoring || isSpectator) return;
+        const phase = activePhase();
+        // cover 或尚未有玩家的 setup：無進行中牌局，清掉殘留存檔
+        if (phase === 'cover' || (players.length === 0 && phase === 'setup')) {
+            try { storageAdapter.removeItem(PokerChipState.KEYS.CURRENT_GAME); } catch (e) {}
+            return;
+        }
+        const value = PokerChipState.serializeCurrentGame(buildCurrentGame());
+        try {
+            const res = PokerChipState.saveWithEviction(storageAdapter, PokerChipState.KEYS.CURRENT_GAME, value, [undoEvictor, historyEvictor]);
+            if (res.ok) {
+                if (res.evicted > 0) showToast('儲存空間不足，已自動清理較舊的資料 (' + res.evicted + ' 筆)');
+            } else {
+                showStorageHardFail();
+            }
+        } catch (e) {
+            // 非 quota（隱私模式 / 儲存不可用）→ 退純記憶體，一次性提示
+            if (!privacyNotified) { privacyNotified = true; showPrivacyBanner(); }
+        }
+    }
+
+    // T03：存檔節奏控制器（debounce 600ms + flush + milestone）；saveNow 即 persist
+    const saver = PokerChipState.createSaver({
+        debounceMs: 600,
+        schedule: (fn, ms) => setTimeout(fn, ms),
+        cancel: (token) => clearTimeout(token),
+        saveNow: persist
+    });
+
+    // T03：鎖屏/切 App 攔截 → 立即 flush 存檔（解決 v1.txt 痛點：末幾筆不遺失）
+    function flushOnHide() { try { saver.flush(); } catch (e) {} }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushOnHide(); });
+    window.addEventListener('pagehide', flushOnHide);
+    window.addEventListener('beforeunload', flushOnHide);
+
+    // T08：復原快照（深拷貝 currentGame，受 T06 雙控：20 張 / 200KB）
+    function pushUndoSnapshot(action) {
+        try {
+            const snap = {
+                id: PokerChipState.genId(),
+                ts: PokerChipState.now(),
+                action: action || '',
+                snapshot: JSON.parse(JSON.stringify(buildCurrentGame()))
+            };
+            PokerChipState.pushUndo(storageAdapter, snap, 20, 200000);
+        } catch (e) { /* 隱私模式：跳過 undo 快照 */ }
+    }
+
+    // T08：復原上一步（pop 最新快照 → 還原 currentGame → 同步存檔）
+    function undo() {
+        const stack = PokerChipState.loadUndoStack(storageAdapter);
+        if (stack.length === 0) { alert('已無可復原的操作'); return; }
+        const last = stack.pop();
+        PokerChipState.saveUndoStack(storageAdapter, stack);
+        restoreFromState(last.snapshot);
+        saver.milestone();
+    }
+
+    function restoreFromState(state) {
+        restoring = true;
+        try {
+            currentGameId = state.gameId || null;
+            gameCreatedAt = state.createdAt || 0;
+            players = (state.players || []).map(p => ({ ...p }));
+            transactions = (state.transactions || []).map(t => ({ ...t }));
+            chipCounts = {};
+            chipDenoms.forEach(d => chipCounts[d] = 0);
+            Object.keys(state.chipAllocation || {}).forEach(k => { chipCounts[Number(k)] = state.chipAllocation[k]; });
+            currentBuyin = state.buyin || (players[0] ? players[0].buyin : 0);
+
+            const sb = document.getElementById('smallBlind'); if (sb) sb.value = state.smallBlind;
+            const bb = document.getElementById('bigBlind'); if (bb) bb.value = state.bigBlind;
+            chipDenoms.forEach(d => { const inp = document.getElementById('chip-input-' + d); if (inp) inp.value = chipCounts[d]; });
+
+            renderSetupList();
+            checkBalance();
+
+            const pageId = PHASE_TO_PAGE[state.phase] || 'page-cover';
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const pageEl = document.getElementById(pageId);
+            if (pageEl) pageEl.classList.add('active');
+
+            if (state.phase === 'game') renderGameTable();
+            if (state.phase === 'endgame') renderEndgameTable();
+            if (state.phase === 'settlement') renderSettlementFromState();
+        } finally {
+            restoring = false;
+        }
+    }
+
+    // settlement 頁還原：直接從已存的 endingChips/profit 重渲染（不依賴 endgame 輸入框）
+    function renderSettlementFromState() {
+        const tbody = document.querySelector('#settlementTable tbody');
+        tbody.innerHTML = '';
+        let totalProfit = 0;
+        players.forEach(p => {
+            const publicCost = p.publicBorrowCount * p.buyin;
+            const borrowInCost = p.borrowInCount * p.buyin;
+            const borrowOutCredit = p.borrowOutCount * p.buyin;
+            const totalInvested = p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            const profitClass = p.profit >= 0 ? 'profit-positive' : 'profit-negative';
+            const profitSign = p.profit >= 0 ? '+' : '';
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + p.name + '</td><td>' + totalInvested + '</td><td>' + p.endingChips + '</td><td class="' + profitClass + '">' + profitSign + p.profit + '</td>';
+            tbody.appendChild(tr);
+            totalProfit += p.profit;
+        });
+        const msg = document.getElementById('validationMsg');
+        const resultDiv = document.getElementById('settlementResult');
+        const errorActions = document.getElementById('errorActions');
+        const successActions = document.getElementById('successActions');
+        if (Math.abs(totalProfit) > 1) {
+            msg.innerText = '⚠️ 錯誤警告：損益總和不为 0 (目前為 ' + totalProfit + ')，請檢查輸入！';
+            msg.style.color = '#e74c3c';
+            resultDiv.innerHTML = '<h3 style="color:#e74c3c">⚠️ 數據核對失敗</h3><p>請檢查是否有籌碼遺失或輸入錯誤。</p>';
+            errorActions.style.display = 'block'; successActions.style.display = 'none';
+        } else {
+            msg.innerText = '✓ 核對總額：正確 (損益總和 = 0)';
+            msg.style.color = '#2ecc71';
+            resultDiv.innerHTML = '<h3 style="color:#2ecc71">✓ 數據核對成功</h3><p>所有玩家債務與盈虧已結清。</p>';
+            errorActions.style.display = 'none'; successActions.style.display = 'block';
+        }
+    }
+    // ===== /T01 =====
 
     // 初始化籌碼輸入框
     function initChipInputs() {
@@ -330,26 +1090,22 @@
         document.getElementById(pageId).classList.add('active');
         if(pageId === 'page-game') renderGameTable();
         if(pageId === 'page-endgame') renderEndgameTable();
+        saver.milestone();
     }
 
     function addPlayerSetup() {
-        const name = document.getElementById('playerName').value;
+        const name = document.getElementById('playerName').value.trim();
         const buyin = parseFloat(document.getElementById('playerBuyin').value) || 0;
         if(!name) return alert('請輸入名稱');
-        
-        players.push({ 
-            name, 
-            buyin, 
-            publicBorrowCount: 0,
-            borrowInCount: 0,
-            borrowOutCount: 0,
-            endingChips: 0,
-            profit: 0
-        });
+        if(PokerChipState.hasDuplicateName(players, name)) return alert('玩家名稱已存在');
+
+        pushUndoSnapshot('add-player-setup');
+        players.push(PokerChipState.newPlayer(name, buyin));
         currentBuyin = buyin;
         updateTotalChipsTarget();
         document.getElementById('playerName').value = '';
         renderSetupList();
+        saver.milestone();
     }
 
     function renderSetupList() {
@@ -363,80 +1119,49 @@
         checkBalance();
     }
 
-    // 籌碼自動分配器
+    // 籌碼自動分配器（T07：用核心 autoAllocate，保證完美配平或明確不可配平）
     function autoAllocateChips() {
-        const totalChips = players.reduce((sum, p) => sum + p.buyin, 0);
         const playerCount = players.length;
-        
-        if(totalChips === 0 || playerCount === 0) return alert('請先加入玩家並設定 Buy-in');
+        if (playerCount === 0) return alert('請先加入玩家並設定 Buy-in');
+        const buyin = currentBuyin || (players[0] ? players[0].buyin : 0);
+        if (!buyin) return alert('請先加入玩家並設定 Buy-in');
 
-        const perPlayer = totalChips / playerCount;
-        
+        const r = PokerChipState.autoAllocate(buyin, playerCount, chipDenoms);
+
+        // 重置輸入框
         chipDenoms.forEach(d => {
             chipCounts[d] = 0;
             const input = document.getElementById(`chip-input-${d}`);
-            if(input) input.value = 0;
+            if (input) input.value = 0;
         });
 
-        let template = {};
-        
-        if(perPlayer >= 10000) {
-            template = { 1000: 5, 500: 4, 100: 10, 50: 4, 20: 2, 10: 1, 5: 0 };
-        } else if(perPlayer >= 5000) {
-            template = { 1000: 2, 500: 3, 100: 8, 50: 4, 20: 2, 10: 1, 5: 0 };
-        } else if(perPlayer >= 2000) {
-            template = { 1000: 1, 500: 1, 100: 5, 50: 4, 20: 2, 10: 2, 5: 0 };
-        } else {
-            template = { 1000: 0, 500: 1, 100: 2, 50: 4, 20: 5, 10: 2, 5: 0 };
+        if (!r.balanceable) {
+            checkBalance();
+            saver.milestone();
+            alert(r.reason === 'unbalanceable'
+                ? `此 Buy-in (${buyin}) 無法以現有面額完美配平，請調整面額或 Buy-in`
+                : '無法分配，請檢查玩家與 Buy-in');
+            return;
         }
 
-        let currentTotal = 0;
-        Object.keys(template).forEach(denom => {
-            const countPerPerson = template[denom];
-            const totalCount = countPerPerson * playerCount;
-            chipCounts[denom] = totalCount;
-            currentTotal += totalCount * parseInt(denom);
+        pushUndoSnapshot('auto-allocate');
+        Object.keys(r.chipAllocation).forEach(d => {
+            chipCounts[Number(d)] = r.chipAllocation[d];
         });
-
-        let diff = totalChips - currentTotal;
-        
-        while(diff !== 0) {
-            if(diff > 0) {
-                if(diff >= 500 * playerCount) {
-                    chipCounts[500] += playerCount;
-                    diff -= 500 * playerCount;
-                } else if(diff >= 100 * playerCount) {
-                    chipCounts[100] += playerCount;
-                    diff -= 100 * playerCount;
-                } else if(diff >= 50 * playerCount) {
-                    chipCounts[50] += playerCount;
-                    diff -= 50 * playerCount;
-                } else {
-                    if(diff >= 20 * playerCount) { chipCounts[20] += playerCount; diff -= 20 * playerCount; }
-                    else if(diff >= 10 * playerCount) { chipCounts[10] += playerCount; diff -= 10 * playerCount; }
-                    else if(diff >= 5 * playerCount) { chipCounts[5] += playerCount; diff -= 5 * playerCount; }
-                    else break;
-                }
-            } else {
-                if(chipCounts[100] >= playerCount && diff <= -100 * playerCount) { chipCounts[100] -= playerCount; diff += 100 * playerCount; }
-                else if(chipCounts[50] >= playerCount && diff <= -50 * playerCount) { chipCounts[50] -= playerCount; diff += 50 * playerCount; }
-                else if(chipCounts[20] >= playerCount && diff <= -20 * playerCount) { chipCounts[20] -= playerCount; diff += 20 * playerCount; }
-                else break;
-            }
-        }
-
         chipDenoms.forEach(denom => {
             const input = document.getElementById(`chip-input-${denom}`);
-            if(input) input.value = chipCounts[denom];
+            if (input) input.value = chipCounts[denom];
         });
 
         checkBalance();
-        alert('已生成新的籌碼分配方案 (已確保可被玩家數整除)');
+        saver.milestone();
+        alert('已生成新的籌碼分配方案（已完美配平）');
     }
 
     function updateChipCount(denom, value) {
         chipCounts[denom] = parseInt(value) || 0;
         checkBalance();
+        saver.schedule();
     }
 
     function checkBalance() {
@@ -468,36 +1193,27 @@
         }
     }
 
-    // 第二點修復：橫放 Poker Table 座位佈局 (手機友好)
-    function renderGameTable() {
-        const table = document.getElementById('pokerTable');
-        const publicSelect = document.getElementById('publicPlayerSelect');
-        const lenderSelect = document.getElementById('lenderSelect');
-        const borrowerSelect = document.getElementById('borrowerSelect');
-        
-        table.innerHTML = '';
-        publicSelect.innerHTML = '';
-        lenderSelect.innerHTML = '';
-        borrowerSelect.innerHTML = '';
-        
-        // 橫放橢圓形座位 (10 個位置) - 手機友好
-        const seats = [
-            { top: '50%', left: '5%' },    // 1 - 左側中間
-            { top: '20%', left: '15%' },   // 2 - 左上
-            { top: '10%', left: '35%' },   // 3 - 上左
-            { top: '10%', left: '65%' },   // 4 - 上右
-            { top: '20%', left: '85%' },   // 5 - 右上
-            { top: '50%', left: '95%' },   // 6 - 右側中間
-            { top: '80%', left: '85%' },   // 7 - 右下
-            { top: '90%', left: '65%' },   // 8 - 下右
-            { top: '90%', left: '35%' },   // 9 - 下左
-            { top: '80%', left: '15%' }    // 10 - 左下
-        ];
+    // 第二點修復 + T04：座位渲染與 select 渲染拆開（Bug D-1）
+    // 橫放橢圓形座位 (10 個位置) - 手機友好
+    const SEATS = [
+        { top: '50%', left: '5%' },    // 1 - 左側中間
+        { top: '20%', left: '15%' },   // 2 - 左上
+        { top: '10%', left: '35%' },   // 3 - 上左
+        { top: '10%', left: '65%' },   // 4 - 上右
+        { top: '20%', left: '85%' },   // 5 - 右上
+        { top: '50%', left: '95%' },   // 6 - 右側中間
+        { top: '80%', left: '85%' },   // 7 - 右下
+        { top: '90%', left: '65%' },   // 8 - 下右
+        { top: '90%', left: '35%' },   // 9 - 下左
+        { top: '80%', left: '15%' }    // 10 - 左下
+    ];
 
+    // 只重渲染牌桌座位與 stats（交易後呼叫，不動 select → Bug D-1）
+    function renderSeats() {
+        const table = document.getElementById('pokerTable');
+        table.innerHTML = '';
         players.forEach((p, i) => {
-            const seatIndex = i % 10;
-            const pos = seats[seatIndex];
-            
+            const pos = SEATS[i % 10];
             const spot = document.createElement('div');
             spot.className = 'player-spot';
             spot.style.top = pos.top;
@@ -510,96 +1226,119 @@
                 </div>
             `;
             table.appendChild(spot);
-
-            const option = document.createElement('option');
-            option.value = p.name;
-            option.innerText = p.name;
-            publicSelect.appendChild(option.cloneNode(true));
-            lenderSelect.appendChild(option.cloneNode(true));
-            borrowerSelect.appendChild(option.cloneNode(true));
         });
+    }
 
+    // 重建玩家 select（玩家增減時呼叫；以 id 為值；保留先前選中 → Bug D-1）
+    function renderSelects() {
+        const publicSelect = document.getElementById('publicPlayerSelect');
+        const lenderSelect = document.getElementById('lenderSelect');
+        const prevPub = publicSelect.value;
+        const prevLender = lenderSelect.value;
+
+        publicSelect.innerHTML = '';
+        lenderSelect.innerHTML = '';
+        players.forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.innerText = p.name;
+            publicSelect.appendChild(o);
+            lenderSelect.appendChild(o.cloneNode(true));
+        });
+        if (prevPub && players.some(p => p.id === prevPub)) publicSelect.value = prevPub;
+        if (prevLender && players.some(p => p.id === prevLender)) lenderSelect.value = prevLender;
         updateBorrowerSelect();
+    }
+
+    // 完整渲染（開局 / 玩家增減 / 還原時呼叫）
+    function renderGameTable() {
+        renderSeats();
+        renderSelects();
         renderTransactionLog();
     }
 
     function updateBorrowerSelect() {
         const lenderSelect = document.getElementById('lenderSelect');
         const borrowerSelect = document.getElementById('borrowerSelect');
-        const selectedLender = lenderSelect.value;
-        
+        const lenderId = lenderSelect.value;
+        const prevBorrower = borrowerSelect.value;
+
         borrowerSelect.innerHTML = '';
         players.forEach(p => {
-            if(p.name !== selectedLender) {
-                const option = document.createElement('option');
-                option.value = p.name;
-                option.innerText = p.name;
-                borrowerSelect.appendChild(option);
+            if(p.id !== lenderId) {
+                const o = document.createElement('option');
+                o.value = p.id;
+                o.innerText = p.name;
+                borrowerSelect.appendChild(o);
             }
         });
+        if (prevBorrower && prevBorrower !== lenderId && players.some(p => p.id === prevBorrower)) {
+            borrowerSelect.value = prevBorrower;
+        }
     }
 
     function updatePublicBorrow(amount) {
-        const name = document.getElementById('publicPlayerSelect').value;
-        const p = players.find(x => x.name === name);
+        const id = document.getElementById('publicPlayerSelect').value;
+        const p = PokerChipState.findPlayerById(players, id);
         if(p) {
+            pushUndoSnapshot('public-borrow');
+            const pre = p.publicBorrowCount;
             p.publicBorrowCount += amount;
             if(p.publicBorrowCount < 0) p.publicBorrowCount = 0;
-            
-            transactions.push({
-                type: 'public',
-                player: name,
-                amount: amount,
-                time: new Date().toLocaleTimeString()
-            });
-            
-            renderGameTable();
+
+            transactions.push(PokerChipState.makePublicTransaction(p.id, amount, new Date().toLocaleTimeString(), pre));
+
+            renderSeats();
             renderTransactionLog();
+            saver.schedule();
         }
     }
 
     function recordPlayerBorrow() {
-        const lender = document.getElementById('lenderSelect').value;
-        const borrower = document.getElementById('borrowerSelect').value;
-        
-        if(!borrower) return alert('沒有可選擇的借款人');
-        if(lender === borrower) return alert('不能借給自己');
-        
-        const lenderP = players.find(x => x.name === lender);
-        const borrowerP = players.find(x => x.name === borrower);
-        
+        const lenderId = document.getElementById('lenderSelect').value;
+        const borrowerId = document.getElementById('borrowerSelect').value;
+
+        if(!borrowerId) return alert('沒有可選擇的借款人');
+        if(lenderId === borrowerId) return alert('不能借給自己');
+
+        const lenderP = PokerChipState.findPlayerById(players, lenderId);
+        const borrowerP = PokerChipState.findPlayerById(players, borrowerId);
+
         if(lenderP && borrowerP) {
+            pushUndoSnapshot('player-borrow');
+            const preLenderOut = lenderP.borrowOutCount;
+            const preBorrowerIn = borrowerP.borrowInCount;
             lenderP.borrowOutCount += 1;
             borrowerP.borrowInCount += 1;
-            
-            transactions.push({
-                type: 'player',
-                lender: lender,
-                borrower: borrower,
-                time: new Date().toLocaleTimeString()
-            });
-            
-            renderGameTable();
+
+            transactions.push(PokerChipState.makePlayerTransaction(lenderId, borrowerId, new Date().toLocaleTimeString(), preLenderOut, preBorrowerIn));
+
+            renderSeats();
             renderTransactionLog();
-            alert(`記錄成功：${lender} 借給 ${borrower}`);
+            saver.schedule();
+            alert(`記錄成功：${lenderP.name} 借給 ${borrowerP.name}`);
         }
     }
 
     function renderTransactionLog() {
         const log = document.getElementById('transactionLog');
         log.innerHTML = '';
-        
+
         transactions.forEach((t, index) => {
             const div = document.createElement('div');
             div.className = 'transaction-item';
             if(t.type === 'public') {
+                const p = PokerChipState.findPlayerById(players, t.playerId);
+                const name = p ? p.name : '?';
                 div.innerHTML = `
-                    <span>${t.time} - ${t.player} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
+                    <span>${t.time} - ${name} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
                     <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
                 `;
             } else {
+                const l = PokerChipState.findPlayerById(players, t.lenderId);
+                const b = PokerChipState.findPlayerById(players, t.borrowerId);
                 div.innerHTML = `
-                    <span>${t.time} - ${t.lender} 借給 ${t.borrower}</span>
+                    <span>${t.time} - ${l ? l.name : '?'} 借給 ${b ? b.name : '?'}</span>
                     <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
                 `;
             }
@@ -609,18 +1348,12 @@
 
     function deleteTransaction(index) {
         const t = transactions[index];
-        if(t.type === 'public') {
-            const p = players.find(x => x.name === t.player);
-            if(p) p.publicBorrowCount -= t.amount;
-        } else {
-            const lenderP = players.find(x => x.name === t.lender);
-            const borrowerP = players.find(x => x.name === t.borrower);
-            if(lenderP) lenderP.borrowOutCount -= 1;
-            if(borrowerP) borrowerP.borrowInCount -= 1;
-        }
+        pushUndoSnapshot('delete-transaction');
+        PokerChipState.applyDeleteTransaction(players, t);
         transactions.splice(index, 1);
-        renderGameTable();
+        renderSeats();
         renderTransactionLog();
+        saver.schedule();
     }
 
     function renderEndgameTable() {
@@ -634,11 +1367,17 @@
                 <td>${p.publicBorrowCount}</td>
                 <td>${p.borrowInCount}</td>
                 <td>${p.borrowOutCount}</td>
-                <td><input type="number" id="end-chips-${i}" value="0" style="width:80px; text-align:center;" oninput="validateEndgameTotals()"></td>
+                <td><input type="number" id="end-chips-${i}" value="${p.endingChips||0}" style="width:80px; text-align:center;" oninput="onEndChipInput(${i}, this.value)"></td>
             `;
             tbody.appendChild(tr);
         });
         validateEndgameTotals();
+    }
+
+    function onEndChipInput(i, val) {
+        if (players[i]) players[i].endingChips = parseFloat(val) || 0;
+        validateEndgameTotals();
+        saver.schedule();
     }
 
     function validateEndgameTotals() {
@@ -669,7 +1408,7 @@
         
         let html = '<table style="width:100%"><tr><th>玩家</th><th>公共借</th><th>借入</th><th>借出</th><th>手上籌碼</th></tr>';
         players.forEach((p, i) => {
-            const endChips = document.getElementById(`end-chips-${i}`).value;
+            const endChips = players[i].endingChips || 0;
             html += `<tr>
                 <td>${p.name}</td>
                 <td>${p.publicBorrowCount}</td>
@@ -691,6 +1430,8 @@
     function confirmFinalCalc() {
         closeModal();
         calculateSettlement();
+        // T09：先歸檔進 history（帶 gameId 冪等去重 + FIFO 上限 5），再進 settlement 階段
+        try { PokerChipState.archiveCurrentGame(storageAdapter, buildCurrentGame(), 5); } catch (e) {}
         navTo('page-settlement');
     }
 
@@ -703,7 +1444,7 @@
         const successActions = document.getElementById('successActions');
         
         players.forEach((p, i) => {
-            const endChips = parseFloat(document.getElementById(`end-chips-${i}`).value) || 0;
+            const endChips = players[i].endingChips || 0;
             p.endingChips = endChips;
 
             const publicCost = p.publicBorrowCount * p.buyin;
@@ -758,6 +1499,9 @@
             transactions = [];
             chipDenoms.forEach(d => chipCounts[d] = 0);
             currentBuyin = 0;
+            currentGameId = null;
+            gameCreatedAt = 0;
+            try { storageAdapter.removeItem(PokerChipState.KEYS.UNDO_STACK); } catch (e) {} // T09：開新局清復原快照（history 保留）
             
             document.getElementById('playerName').value = '';
             document.getElementById('playerBuyin').value = '5000';
@@ -782,6 +1526,94 @@
     }
 
     initChipInputs();
+
+    // ===== T05：多分頁 heartbeat 活鎖 + spectator 唯讀 =====
+    const TAB_ID = PokerChipState.genId();
+    const LOCK_TIMEOUT = 5000;
+    let heartbeatTimer = null;
+
+    function enableApp(enabled) {
+        document.querySelectorAll('.container input, .container select, .container button').forEach(el => {
+            el.disabled = !enabled;
+        });
+    }
+    function showSpectatorBanner() { const b = document.getElementById('spectatorBanner'); if (b) b.style.display = 'block'; }
+    function hideSpectatorBanner() { const b = document.getElementById('spectatorBanner'); if (b) b.style.display = 'none'; }
+
+    function startActiveHeartbeat() {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = setInterval(() => {
+            const ok = PokerChipState.refreshHeartbeat(storageAdapter, TAB_ID, PokerChipState.now());
+            if (!ok) becomeSpectator(); // 失去鎖（被他分頁接手）→ 退為 spectator
+        }, 2000);
+        const release = () => { if (!isSpectator) PokerChipState.clearLock(storageAdapter); };
+        window.addEventListener('pagehide', release);
+        window.addEventListener('beforeunload', release);
+    }
+
+    function becomeSpectator() {
+        isSpectator = true;
+        showSpectatorBanner();
+        enableApp(false);
+        if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+        if (!window._spectatorPoll) {
+            window._spectatorPoll = setInterval(() => {
+                if (!isSpectator) return;
+                const existing = PokerChipState.loadLock(storageAdapter);
+                if (!PokerChipState.isLockActive(existing, PokerChipState.now(), LOCK_TIMEOUT)) {
+                    const r = PokerChipState.tryAcquireLock(storageAdapter, TAB_ID, PokerChipState.now(), LOCK_TIMEOUT);
+                    if (r.role === 'active') {
+                        isSpectator = false;
+                        hideSpectatorBanner();
+                        enableApp(true);
+                        startActiveHeartbeat();
+                        loadAndRestore(); // 以持久化 currentGame 為真相重新讀取
+                    }
+                }
+            }, 2000);
+        }
+    }
+
+    // 角色感知還原：spectator 唯讀呈現；active 處理 settlement 導回封面與壞檔恢復
+    function loadAndRestore() {
+        try {
+            const { state, status } = PokerChipState.loadCurrentGame(storageAdapter);
+            if (status === 'ok' || status === 'migrated') {
+                if (isSpectator) {
+                    restoreFromState(state);
+                } else if (state.phase === 'settlement') {
+                    // Q-A：已結算局重載 → 確保歸檔（idempotent）後導回封面，不停在結算頁
+                    try { PokerChipState.archiveCurrentGame(storageAdapter, state, 5); } catch (e) {}
+                    storageAdapter.removeItem(PokerChipState.KEYS.CURRENT_GAME);
+                } else {
+                    restoreFromState(state);
+                }
+            } else if (status === 'corrupt' && !isSpectator) {
+                const bk = PokerChipState.backupKey(storageAdapter, PokerChipState.KEYS.CURRENT_GAME);
+                try { storageAdapter.removeItem(PokerChipState.KEYS.CURRENT_GAME); } catch (e) {}
+                if (bk) showRecoveryBanner(bk);
+            }
+            // 'empty' → 留在封面（預設 active）
+        } catch (e) { /* 還原失敗不阻塞，留在封面 */ }
+    }
+
+    // spectator 監聽 storage 事件 → 即時重渲染唯讀（看見 active 分頁的最新狀態）
+    window.addEventListener('storage', (e) => {
+        if (isSpectator && e.key === PokerChipState.KEYS.CURRENT_GAME) loadAndRestore();
+    });
+
+    // 開場：取得鎖（active / spectator），再還原資料
+    (function initOnLoad() {
+        try {
+            const r = PokerChipState.tryAcquireLock(storageAdapter, TAB_ID, PokerChipState.now(), LOCK_TIMEOUT);
+            if (r.role === 'active') { isSpectator = false; startActiveHeartbeat(); }
+            else { becomeSpectator(); }
+        } catch (e) {
+            // 隱私模式：無法鎖，當作單一分頁（active 無鎖），不阻斷；privacyBanner 已由 persist 寫入失敗時提示
+            isSpectator = false;
+        }
+        loadAndRestore();
+    })();
 </script>
 
 </body>
