@@ -905,6 +905,12 @@
     const undoEvictor = PokerChipState.makeEvictor(storageAdapter, PokerChipState.loadUndoStack, PokerChipState.saveUndoStack, 0);
     const historyEvictor = PokerChipState.makeEvictor(storageAdapter, PokerChipState.loadHistory, PokerChipState.saveHistory, 1);
 
+    // 維度 a 決策 A：輸出端轉義。玩家名為自由輸入，拼進 innerHTML 前必轉義，
+    // 防 < > & " 造成版面崩潰或 XSS（innerHTML 插入的 img onerror 會執行）。
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     // T06：分級儲存提示
     let privacyNotified = false;
     function showToast(msg) {
@@ -1047,7 +1053,7 @@
             const profitClass = p.profit >= 0 ? 'profit-positive' : 'profit-negative';
             const profitSign = p.profit >= 0 ? '+' : '';
             const tr = document.createElement('tr');
-            tr.innerHTML = '<td>' + p.name + '</td><td>' + totalInvested + '</td><td>' + p.endingChips + '</td><td class="' + profitClass + '">' + profitSign + p.profit + '</td>';
+            tr.innerHTML = '<td>' + escapeHtml(p.name) + '</td><td>' + totalInvested + '</td><td>' + p.endingChips + '</td><td class="' + profitClass + '">' + profitSign + p.profit + '</td>';
             tbody.appendChild(tr);
             totalProfit += p.profit;
         });
@@ -1110,7 +1116,7 @@
 
     function renderSetupList() {
         const div = document.getElementById('setupPlayerList');
-        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${p.name} (${p.buyin})</div>`).join('');
+        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${escapeHtml(p.name)} (${p.buyin})</div>`).join('');
     }
 
     function updateTotalChipsTarget() {
@@ -1219,7 +1225,7 @@
             spot.style.top = pos.top;
             spot.style.left = pos.left;
             spot.innerHTML = `
-                <div>${p.name}</div>
+                <div>${escapeHtml(p.name)}</div>
                 <div class="player-stats">
                     <div>公共：${p.publicBorrowCount}</div>
                     <div>借出：${p.borrowOutCount} | 借入：${p.borrowInCount}</div>
@@ -1290,7 +1296,7 @@
 
             renderSeats();
             renderTransactionLog();
-            saver.schedule();
+            saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
         }
     }
 
@@ -1315,7 +1321,7 @@
 
             renderSeats();
             renderTransactionLog();
-            saver.schedule();
+            saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
             alert(`記錄成功：${lenderP.name} 借給 ${borrowerP.name}`);
         }
     }
@@ -1331,14 +1337,14 @@
                 const p = PokerChipState.findPlayerById(players, t.playerId);
                 const name = p ? p.name : '?';
                 div.innerHTML = `
-                    <span>${t.time} - ${name} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
+                    <span>${t.time} - ${escapeHtml(name)} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
                     <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
                 `;
             } else {
                 const l = PokerChipState.findPlayerById(players, t.lenderId);
                 const b = PokerChipState.findPlayerById(players, t.borrowerId);
                 div.innerHTML = `
-                    <span>${t.time} - ${l ? l.name : '?'} 借給 ${b ? b.name : '?'}</span>
+                    <span>${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')}</span>
                     <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
                 `;
             }
@@ -1353,7 +1359,8 @@
         transactions.splice(index, 1);
         renderSeats();
         renderTransactionLog();
-        saver.schedule();
+        saver.milestone();          // 離散變動同步寫盤（維度 c 決策 A）：鎖屏前必落地
+        showToast('已刪除一筆帳目 · 點 ↶ 復原');
     }
 
     function renderEndgameTable() {
@@ -1362,7 +1369,7 @@
         players.forEach((p, i) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${p.name}</td>
+                <td>${escapeHtml(p.name)}</td>
                 <td>${p.buyin}</td>
                 <td>${p.publicBorrowCount}</td>
                 <td>${p.borrowInCount}</td>
@@ -1377,7 +1384,7 @@
     function onEndChipInput(i, val) {
         if (players[i]) players[i].endingChips = parseFloat(val) || 0;
         validateEndgameTotals();
-        saver.schedule();
+        saver.milestone();      // 結算頁最終籌碼同步寫盤（維度 d 決策 A）：算錢那一刻絕對不掉
     }
 
     function validateEndgameTotals() {
@@ -1410,7 +1417,7 @@
         players.forEach((p, i) => {
             const endChips = players[i].endingChips || 0;
             html += `<tr>
-                <td>${p.name}</td>
+                <td>${escapeHtml(p.name)}</td>
                 <td>${p.publicBorrowCount}</td>
                 <td>${p.borrowInCount}</td>
                 <td>${p.borrowOutCount}</td>
@@ -1460,7 +1467,7 @@
             const profitSign = p.profit >= 0 ? '+' : '';
             
             tr.innerHTML = `
-                <td>${p.name}</td>
+                <td>${escapeHtml(p.name)}</td>
                 <td>${totalInvested}</td>
                 <td>${endChips}</td>
                 <td class="${profitClass}">${profitSign}${p.profit}</td>
@@ -1581,11 +1588,13 @@
             if (status === 'ok' || status === 'migrated') {
                 if (isSpectator) {
                     restoreFromState(state);
-                } else if (state.phase === 'settlement') {
-                    // Q-A：已結算局重載 → 確保歸檔（idempotent）後導回封面，不停在結算頁
-                    try { PokerChipState.archiveCurrentGame(storageAdapter, state, 5); } catch (e) {}
-                    storageAdapter.removeItem(PokerChipState.KEYS.CURRENT_GAME);
                 } else {
+                    // settlement 也走 restoreFromState（renderSettlementFromState 還原結算頁），
+                    // 不再 removeItem：結算結果（誰付誰）是 app 最核心交付物，必須在重載後留存。
+                    // 對 settlement 先做一次冪等 archive，兜住 confirmFinalCalc 在 archive 前中斷的自癒。
+                    if (state.phase === 'settlement') {
+                        try { PokerChipState.archiveCurrentGame(storageAdapter, state, 5); } catch (e) {}
+                    }
                     restoreFromState(state);
                 }
             } else if (status === 'corrupt' && !isSpectator) {
