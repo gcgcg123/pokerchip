@@ -114,15 +114,15 @@
         <h1>Poker Chip Master</h1>
         <h2>撲克籌碼結算工具</h2>
         <p>完整的籌碼管理與結算系統</p>
-        <button class="btn-main" onclick="navTo('page-setup')">RUN NOW!</button>
+        <button class="btn-main" onclick="navTo('page-setup')">立即開始</button>
         <div class="footer">Creator: Gino</div>
     </div>
 
     <!-- 開局前設定 (Before Starting) -->
     <div id="page-setup" class="page">
-        <h2>Before Starting</h2>
+        <h2>開局前設定</h2>
         <div class="card">
-            <h3>Section 1 & 2: 玩家與 Buy-in</h3>
+            <h3>一、玩家與 Buy-in 金額</h3>
             <div class="input-group">
                 <input type="text" id="playerName" placeholder="玩家名稱">
                 <input type="number" id="playerBuyin" placeholder="Buy-in 金額" value="5000">
@@ -132,7 +132,7 @@
         </div>
 
         <div class="card">
-            <h3>Section 3 & 4: 籌碼分配方案</h3>
+            <h3>二、籌碼分配方案</h3>
             <div class="input-group">
                 <label>小盲注 (Small Blind):</label>
                 <input type="number" id="smallBlind" value="50" style="width:100px">
@@ -140,22 +140,22 @@
                 <input type="number" id="bigBlind" value="100" style="width:100px">
                 <button class="btn" onclick="autoAllocateChips()">一鍵自動分配 (可重複點擊)</button>
             </div>
-            <p>總籌碼目標 (Z): <span id="totalChipsTarget">0</span> | 已分配：<span id="allocatedChips">0</span></p>
+            <p>總籌碼目標：<span id="totalChipsTarget">0</span> | 已分配：<span id="allocatedChips">0</span></p>
             
             <!-- 第一點修復：籌碼分兩行排開 -->
             <div class="chip-row" id="chipAllocation">
                 <!-- 由 JS 生成籌碼輸入框 -->
             </div>
             
-            <div id="balanceDisplay" class="balance-display">Balance: 0</div>
-            <button class="btn-main" id="btnOpenGame" onclick="navTo('page-game')" style="display:none; margin-top:20px;">OPEN GAME</button>
+            <div id="balanceDisplay" class="balance-display">結餘：0</div>
+            <button class="btn-main" id="btnOpenGame" onclick="navTo('page-game')" style="display:none; margin-top:20px;">開始牌局</button>
         </div>
     </div>
 
     <!-- 遊戲中 (In The Game) -->
     <div id="page-game" class="page" style="position: relative;">
         <button class="btn-add-player" onclick="openAddPlayerModal()">+ 加入玩家</button>
-        <h2>In The Game</h2>
+        <h2>牌局進行中</h2>
         <!-- 第二點修復：橫放 Poker Table (手機友好) -->
         <div class="poker-table-container">
             <div class="poker-table" id="pokerTable">
@@ -196,13 +196,13 @@
             </div>
 
             <button class="btn btn-warning" onclick="undo()">↶ 復原上一步</button>
-            <button class="btn btn-danger" onclick="navTo('page-endgame')">End Game</button>
+            <button class="btn btn-danger" onclick="navTo('page-endgame'); showToast('進入結算核算', 1500)">結束牌局</button>
         </div>
     </div>
 
     <!-- 結算前確認 (End Game) -->
     <div id="page-endgame" class="page">
-        <h2>End Game</h2>
+        <h2>結算核算</h2>
         <div class="card">
             <p style="color: #f1c40f; margin-bottom: 15px;">請輸入每位玩家「手上現存的籌碼總數」</p>
             <!-- 第三點修復：手機友好表格 -->
@@ -229,15 +229,15 @@
             </table>
             <div id="endgame-mismatch" style="color:#e74c3c; font-weight:bold; margin-top:10px; display:none;">總投入與手上籌碼總數不一致，請檢查！</div>
             <div id="endgame-match" style="color:#2ecc71; font-weight:bold; margin-top:10px; display:none;">總數一致，可進行結算</div>
-            <button class="btn" id="runFinalCalcBtn" onclick="showFinalCalcModal()" style="display:none;">RUN FINAL CALC</button>
+            <button class="btn" id="runFinalCalcBtn" onclick="showFinalCalcModal()" style="display:none;">執行結算</button>
         </div>
-        <button class="btn" onclick="navTo('page-game')">返回遊戲</button>
+        <button class="btn" onclick="navTo('page-game'); showToast('返回牌局', 1500)">返回遊戲</button>
         <div class="footer">Creator: Gino</div>
     </div>
 
     <!-- 最終結算 (Settlement) -->
     <div id="page-settlement" class="page">
-        <h2>Settlement - 最終結算</h2>
+        <h2>最終結算</h2>
         <div class="card">
             <div id="settlementResult"></div>
             <table class="mobile-table" id="settlementTable">
@@ -253,7 +253,7 @@
             </table>
             <div id="validationMsg" style="margin-top:15px; font-weight:bold; font-size: 1.1em;"></div>
             <div id="errorActions" style="display:none; margin-top:15px;">
-                <button class="btn btn-warning" onclick="navTo('page-endgame')">Back (返回核算金額)</button>
+                <button class="btn btn-warning" onclick="navTo('page-endgame'); showToast('返回核算', 1500)">返回核算</button>
             </div>
             <div id="successActions" style="display:none; margin-top:15px;">
                 <button class="btn btn-success" onclick="exportReport()">一鍵複製報表</button>
@@ -850,14 +850,15 @@
     function addMidGamePlayer() {
         const nameInput = document.getElementById('midGamePlayerName');
         const name = nameInput.value.trim();
-        if (!name) { alert('請輸入玩家名稱'); return; }
-        if (players.some(p => p.name === name)) { alert('玩家名稱已存在'); return; }
+        if (!name) { showToast('請輸入玩家名稱'); return; }
+        if (players.some(p => p.name === name)) { showToast('玩家名稱已存在'); return; }
         const buyin = currentBuyin || (players.length > 0 ? players[0].buyin : 0);
         pushUndoSnapshot('add-mid-player');
         players.push(PokerChipState.newPlayer(name, buyin));
         closeAddPlayerModal();
         renderGameTable();
         saver.milestone();
+        showToast('已加入玩家 ' + name);
     }
 
     let players = [];
@@ -913,12 +914,15 @@
 
     // T06：分級儲存提示
     let privacyNotified = false;
-    function showToast(msg) {
+    let toastTimer = null;
+    // D3c：覆蓋式 toast——新訊息即時覆蓋舊訊息並重置計時器；duration 可選（預設 3000ms，導覽類用 1500ms）
+    function showToast(msg, duration) {
         const t = document.getElementById('toast');
         if (!t) return;
         t.textContent = msg;
         t.classList.add('show');
-        setTimeout(() => t.classList.remove('show'), 3000);
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { t.classList.remove('show'); toastTimer = null; }, duration || 3000);
     }
     function showPrivacyBanner() {
         const b = document.getElementById('privacyBanner');
@@ -1001,11 +1005,12 @@
     // T08：復原上一步（pop 最新快照 → 還原 currentGame → 同步存檔）
     function undo() {
         const stack = PokerChipState.loadUndoStack(storageAdapter);
-        if (stack.length === 0) { alert('已無可復原的操作'); return; }
+        if (stack.length === 0) { showToast('已無可復原的操作'); return; }
         const last = stack.pop();
         PokerChipState.saveUndoStack(storageAdapter, stack);
         restoreFromState(last.snapshot);
         saver.milestone();
+        showToast('已復原');
     }
 
     function restoreFromState(state) {
@@ -1102,8 +1107,8 @@
     function addPlayerSetup() {
         const name = document.getElementById('playerName').value.trim();
         const buyin = parseFloat(document.getElementById('playerBuyin').value) || 0;
-        if(!name) return alert('請輸入名稱');
-        if(PokerChipState.hasDuplicateName(players, name)) return alert('玩家名稱已存在');
+        if(!name) return showToast('請輸入玩家名稱');
+        if(PokerChipState.hasDuplicateName(players, name)) return showToast('玩家名稱已存在');
 
         pushUndoSnapshot('add-player-setup');
         players.push(PokerChipState.newPlayer(name, buyin));
@@ -1112,11 +1117,24 @@
         document.getElementById('playerName').value = '';
         renderSetupList();
         saver.milestone();
+        showToast('已加入玩家 ' + name);
     }
 
     function renderSetupList() {
         const div = document.getElementById('setupPlayerList');
-        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${escapeHtml(p.name)} (${p.buyin})</div>`).join('');
+        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${escapeHtml(p.name)} (${p.buyin}) <button class="btn btn-danger" onclick="removePlayerSetup(${i})" style="padding:2px 8px;">刪除</button></div>`).join('');
+    }
+
+    // D2.3：設定階段刪除玩家（牌局進行中不開放；設定階段無交易，故無借還紀錄檢查）
+    function removePlayerSetup(i) {
+        const p = players[i];
+        if (!p) return;
+        pushUndoSnapshot('remove-player-setup');
+        players.splice(i, 1);
+        updateTotalChipsTarget();
+        renderSetupList();
+        saver.milestone();
+        showToast('已刪除玩家 ' + p.name);
     }
 
     function updateTotalChipsTarget() {
@@ -1161,7 +1179,7 @@
 
         checkBalance();
         saver.milestone();
-        alert('已生成新的籌碼分配方案（已完美配平）');
+        showToast('已自動配平籌碼');
     }
 
     function updateChipCount(denom, value) {
@@ -1182,13 +1200,13 @@
         allocatedDisplay.innerText = current;
         
         if(balance > 0) {
-            display.innerText = `Balance: ${balance} (還需分配 ${balance})`;
+            display.innerText = `結餘：${balance}（還需分配 ${balance}）`;
             display.className = 'balance-display balance-error';
         } else if(balance < 0) {
-            display.innerText = `Balance: ${balance} (超出 ${Math.abs(balance)})`;
+            display.innerText = `結餘：${balance}（超出 ${Math.abs(balance)}）`;
             display.className = 'balance-display balance-error';
         } else {
-            display.innerText = `Balance: 0 (分配正確)`;
+            display.innerText = `結餘：0（分配正確）`;
             display.className = 'balance-display balance-ok';
         }
         
@@ -1297,6 +1315,7 @@
             renderSeats();
             renderTransactionLog();
             saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
+            showToast(p.name + (amount > 0 ? ' 公共取籌' : ' 歸還公共') + ' (' + (amount > 0 ? '+' : '') + amount + ')');
         }
     }
 
@@ -1304,8 +1323,8 @@
         const lenderId = document.getElementById('lenderSelect').value;
         const borrowerId = document.getElementById('borrowerSelect').value;
 
-        if(!borrowerId) return alert('沒有可選擇的借款人');
-        if(lenderId === borrowerId) return alert('不能借給自己');
+        if(!borrowerId) return showToast('沒有可選擇的借款人');
+        if(lenderId === borrowerId) return showToast('不能借給自己');
 
         const lenderP = PokerChipState.findPlayerById(players, lenderId);
         const borrowerP = PokerChipState.findPlayerById(players, borrowerId);
@@ -1322,7 +1341,7 @@
             renderSeats();
             renderTransactionLog();
             saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
-            alert(`記錄成功：${lenderP.name} 借給 ${borrowerP.name}`);
+            showToast(lenderP.name + ' 借給 ' + borrowerP.name);
         }
     }
 
@@ -1440,6 +1459,7 @@
         // T09：先歸檔進 history（帶 gameId 冪等去重 + FIFO 上限 5），再進 settlement 階段
         try { PokerChipState.archiveCurrentGame(storageAdapter, buildCurrentGame(), 5); } catch (e) {}
         navTo('page-settlement');
+        showToast('已結算並歸檔');
     }
 
     function calculateSettlement() {
@@ -1497,7 +1517,7 @@
         players.forEach(p => {
             report += `${p.name}: 盈虧 ${p.profit}\n`;
         });
-        navigator.clipboard.writeText(report).then(() => alert("報表已複製"));
+        navigator.clipboard.writeText(report).then(() => showToast("報表已複製"));
     }
 
     function resetToCover() {
@@ -1515,7 +1535,7 @@
             document.getElementById('setupPlayerList').innerHTML = '';
             document.getElementById('totalChipsTarget').innerText = '0';
             document.getElementById('allocatedChips').innerText = '0';
-            document.getElementById('balanceDisplay').innerText = 'Balance: 0';
+            document.getElementById('balanceDisplay').innerText = '結餘：0';
             document.getElementById('btnOpenGame').style.display = 'none';
             document.getElementById('transactionLog').innerHTML = '';
             document.getElementById('settlementResult').innerHTML = '';
