@@ -1,0 +1,8 @@
+# Cloudflare Workers — Static Assets 部署（純靜態單檔站）
+# 無 Worker script：靜態資產指向 repo 根目錄，直接託管 index.html。
+# 注意：靜態資產專案不可設 `main`（空字串會使 wrangler 驗證失敗），故省略。
+name = "pokerchip-deploy"
+compatibility_date = "2024-09-23"
+
+[assets]
+directory = "."
