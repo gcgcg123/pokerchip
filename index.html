@@ -157,6 +157,11 @@
     <div id="page-game" class="page" style="position: relative;">
         <button class="btn-add-player" onclick="openAddPlayerModal()">+ 加入玩家</button>
         <h2>牌局進行中</h2>
+        <!-- v7 E3/E4：全場總籌碼（對帳用）+ 未結清借貸摘要 -->
+        <div id="gameTotals" class="card" style="text-align:center;">
+            <div>全場總籌碼：<strong id="totalChipDisplay">0</strong></div>
+            <div id="outstandingDebtsDisplay" style="margin-top:6px; color:#f39c12; font-size:0.95em;"></div>
+        </div>
         <!-- 第二點修復：橫放 Poker Table (手機友好) -->
         <div class="poker-table-container">
             <div class="poker-table" id="pokerTable">
@@ -168,10 +173,10 @@
             
             <div class="card">
                 <h4>公共區取籌 / 歸還</h4>
-                <select id="publicPlayerSelect" style="min-width: 150px;"></select>
+                <select id="publicPlayerSelect" onchange="updatePublicReturnButton()" style="min-width: 150px;"></select>
                 <div style="margin-top: 10px;">
                     <button class="btn" onclick="updatePublicBorrow(1)">從公共區取籌 (+1)</button>
-                    <button class="btn" onclick="updatePublicBorrow(-1)">歸還公共區 (-1)</button>
+                    <button class="btn" id="btnPublicReturn" onclick="updatePublicBorrow(-1)">歸還公共區 (-1)</button>
                 </div>
             </div>
 
@@ -192,7 +197,7 @@
             </div>
 
             <div class="card">
-                <h4>帳目記錄 (可刪除修正)</h4>
+                <h4>帳目記錄（最新一筆可刪除；玩家借貸可還款結清）</h4>
                 <div id="transactionLog" class="transaction-log"></div>
             </div>
 
@@ -525,6 +530,8 @@
 
     // T08：快照還原式刪除（修 Bug B/G）。優先還原交易當下的 pre 計數；
     // 舊交易無 pre 欄位（v3 以前）則退回反向套用，保持舊資料可刪。
+    // v7：'player-repay' 交易的還原與 'player' 相同（還原 pre 計數＝撤銷還款＝債務復活），
+    //     由下方 else 分支涵蓋，無需另行分支。
     function applyDeleteTransaction(players, tx) {
         if (tx.type === 'public') {
             var p = findPlayerById(players, tx.playerId);
@@ -539,6 +546,62 @@
             if (typeof tx.preBorrowerBorrowIn === 'number' && b) b.borrowInCount = tx.preBorrowerBorrowIn;
             else if (b) b.borrowInCount -= 1;
         }
+    }
+
+    // v7 HOLE B（E2 方案 B1）：玩家還款交易。動作為「淨減 1」——
+    // borrower.borrowInCount--、lender.borrowOutCount--（結清一筆未結清借貸）。
+    // 與「刪除（撤銷誤記）」語意徹底分離；還款是 history-independent 的結清，
+    // 不受 snapshot-restore 刪舊筆的歷史衝突影響。pre 欄位供 applyDeleteTransaction 還原。
+    function makePlayerRepayTransaction(lenderId, borrowerId, time, preLenderBorrowOut, preBorrowerBorrowIn) {
+        return { id: genId(), type: 'player-repay', lenderId: lenderId, borrowerId: borrowerId, time: time, preLenderBorrowOut: preLenderBorrowOut, preBorrowerBorrowIn: preBorrowerBorrowIn };
+    }
+
+    // v7 E2 關鍵追加：刪除僅限最新一筆交易（避開 snapshot-restore 刪舊筆的歷史衝突）。
+    // 舊交易不可刪除，需透過獨立還款（player）或歸還（public）來結清。
+    function canDeleteTransaction(transactions, index) {
+        return transactions.length > 0 && index === transactions.length - 1;
+    }
+
+    // v7 E5：結清狀態。對 type 'player' 交易，依 (lenderId,borrowerId) 配對「後續」的 'player-repay'，
+    // 採 FIFO（最早未結清的借貸優先被還款結清）。回傳 { [txId]: 'settled' | 'open' }。
+    // 'player-repay' 與 'public' 不列入（無結清狀態）。
+    function settleStatus(transactions) {
+        var status = {};
+        var queues = {};
+        function k(a, b) { return a + '|' + b; }
+        (transactions || []).forEach(function (t) {
+            if (!t || !t.id) return;
+            if (t.type === 'player') {
+                var key = k(t.lenderId, t.borrowerId);
+                if (!queues[key]) queues[key] = [];
+                queues[key].push(t.id);
+                status[t.id] = 'open';
+            } else if (t.type === 'player-repay') {
+                var key2 = k(t.lenderId, t.borrowerId);
+                if (queues[key2] && queues[key2].length > 0) {
+                    status[queues[key2].shift()] = 'settled';
+                }
+            }
+        });
+        return status;
+    }
+
+    // v7 E4：未結清借貸摘要。回傳 [{ lenderId, borrowerId, count }]（僅 count>0 的配對）。
+    // count = 該配對目前仍未結清的借貸筆數（=借出筆數 − 已還款筆數，FIFO）。
+    function outstandingDebts(transactions) {
+        var opens = settleStatus(transactions);
+        var counts = {};
+        function k(a, b) { return a + '|' + b; }
+        (transactions || []).forEach(function (t) {
+            if (t && t.type === 'player' && opens[t.id] === 'open') {
+                var key = k(t.lenderId, t.borrowerId);
+                counts[key] = (counts[key] || 0) + 1;
+            }
+        });
+        return Object.keys(counts).map(function (key) {
+            var parts = key.split('|');
+            return { lenderId: parts[0], borrowerId: parts[1], count: counts[key] };
+        });
     }
 
     // ===== T07：籌碼自動分配（純函式，Bug C 配平修正）=====
@@ -813,7 +876,11 @@
         findPlayerById: findPlayerById,
         makePublicTransaction: makePublicTransaction,
         makePlayerTransaction: makePlayerTransaction,
+        makePlayerRepayTransaction: makePlayerRepayTransaction,
         applyDeleteTransaction: applyDeleteTransaction,
+        canDeleteTransaction: canDeleteTransaction,
+        settleStatus: settleStatus,
+        outstandingDebts: outstandingDebts,
         // T07
         autoAllocate: autoAllocate,
         // T03
@@ -1273,6 +1340,7 @@
         if (prevPub && players.some(p => p.id === prevPub)) publicSelect.value = prevPub;
         if (prevLender && players.some(p => p.id === prevLender)) lenderSelect.value = prevLender;
         updateBorrowerSelect();
+        updatePublicReturnButton();   // v7 E1：select 重建後依所選玩家更新歸還鈕
     }
 
     // 完整渲染（開局 / 玩家增減 / 還原時呼叫）
@@ -1280,6 +1348,8 @@
         renderSeats();
         renderSelects();
         renderTransactionLog();
+        updatePublicReturnButton();   // v7 E1：依當前所選玩家更新歸還鈕 disabled
+        updateGameTotals();           // v7 E3/E4：全場總籌碼 + 未結清借貸摘要
     }
 
     function updateBorrowerSelect() {
@@ -1306,6 +1376,11 @@
         const id = document.getElementById('publicPlayerSelect').value;
         const p = PokerChipState.findPlayerById(players, id);
         if(p) {
+            // v7 HOLE A：未從公共池借出者不可歸還（避免幻影歸還紀錄）
+            if (amount < 0 && p.publicBorrowCount === 0) {
+                showToast('未從公共池借出，無法歸還');
+                return;
+            }
             pushUndoSnapshot('public-borrow');
             const pre = p.publicBorrowCount;
             p.publicBorrowCount += amount;
@@ -1315,8 +1390,39 @@
 
             renderSeats();
             renderTransactionLog();
+            updatePublicReturnButton();
+            updateGameTotals();
             saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
             showToast(p.name + (amount > 0 ? ' 公共取籌' : ' 歸還公共') + ' (' + (amount > 0 ? '+' : '') + amount + ')');
+        }
+    }
+
+    // v7 E1：依 publicPlayerSelect 所選玩家的 publicBorrowCount 決定「歸還公共區」鈕是否 disabled
+    function updatePublicReturnButton() {
+        const btn = document.getElementById('btnPublicReturn');
+        const sel = document.getElementById('publicPlayerSelect');
+        if (!btn || !sel) return;
+        const p = PokerChipState.findPlayerById(players, sel.value);
+        btn.disabled = !p || p.publicBorrowCount === 0;
+    }
+
+    // v7 E3/E4：全場總籌碼（對帳用）+ 未結清借貸摘要
+    function updateGameTotals() {
+        const totalChip = players.reduce((s, p) => s + p.buyin + p.publicBorrowCount * p.buyin, 0);
+        const td = document.getElementById('totalChipDisplay');
+        if (td) td.textContent = totalChip;
+        const od = document.getElementById('outstandingDebtsDisplay');
+        if (od) {
+            const debts = PokerChipState.outstandingDebts(transactions);
+            if (debts.length === 0) {
+                od.textContent = '未結清借貸：無';
+            } else {
+                od.innerHTML = '未結清借貸：' + debts.map(d => {
+                    const l = PokerChipState.findPlayerById(players, d.lenderId);
+                    const b = PokerChipState.findPlayerById(players, d.borrowerId);
+                    return escapeHtml((l ? l.name : '?') + ' 借給 ' + (b ? b.name : '?') + ' ×' + d.count);
+                }).join('、');
+            }
         }
     }
 
@@ -1341,44 +1447,90 @@
 
             renderSeats();
             renderTransactionLog();
+            updateGameTotals();
             saver.milestone();      // 離散變動同步寫盤：借籌是不可丟的帳目
             showToast(lenderP.name + ' 借給 ' + borrowerP.name);
         }
     }
 
+    // v7 HOLE B（E2 方案 B1）：玩家還款——結清一筆未結清的玩家借貸。
+    // 與「刪除（撤銷誤記）」語意分離；history-independent 淨減 1，不受 snapshot-restore 舊筆坑影響。
+    function repayPlayerBorrow(lenderId, borrowerId) {
+        const lenderP = PokerChipState.findPlayerById(players, lenderId);
+        const borrowerP = PokerChipState.findPlayerById(players, borrowerId);
+        if (!lenderP || !borrowerP) return;
+        // 僅在該配對確有未結清借貸時才允許還款（per-pair FIFO 精確判斷）
+        const hasOpen = PokerChipState.outstandingDebts(transactions).some(
+            d => d.lenderId === lenderId && d.borrowerId === borrowerId && d.count > 0);
+        if (!hasOpen) { showToast('此二人之間已無未結清借貸'); return; }
+        pushUndoSnapshot('player-repay');
+        const preLenderOut = lenderP.borrowOutCount;
+        const preBorrowerIn = borrowerP.borrowInCount;
+        lenderP.borrowOutCount = Math.max(0, lenderP.borrowOutCount - 1);
+        borrowerP.borrowInCount = Math.max(0, borrowerP.borrowInCount - 1);
+        transactions.push(PokerChipState.makePlayerRepayTransaction(lenderId, borrowerId, new Date().toLocaleTimeString(), preLenderOut, preBorrowerIn));
+        renderSeats();
+        renderTransactionLog();
+        updateGameTotals();
+        saver.milestone();      // 離散變動同步寫盤
+        showToast(borrowerP.name + ' 還款給 ' + lenderP.name);
+    }
+
     function renderTransactionLog() {
         const log = document.getElementById('transactionLog');
+        if (!log) return;
         log.innerHTML = '';
+        // v7 E5：結清狀態（player 借貸）；E2：刪除僅限最新一筆
+        const status = PokerChipState.settleStatus(transactions);
+        const lastIndex = transactions.length - 1;
 
         transactions.forEach((t, index) => {
             const div = document.createElement('div');
             div.className = 'transaction-item';
-            if(t.type === 'public') {
+            const isLatest = index === lastIndex;
+            let span = '';
+            let actions = '';
+
+            if (t.type === 'public') {
                 const p = PokerChipState.findPlayerById(players, t.playerId);
                 const name = p ? p.name : '?';
-                div.innerHTML = `
-                    <span>${t.time} - ${escapeHtml(name)} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})</span>
-                    <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
-                `;
-            } else {
+                span = `${t.time} - ${escapeHtml(name)} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})`;
+                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
+            } else if (t.type === 'player') {
                 const l = PokerChipState.findPlayerById(players, t.lenderId);
                 const b = PokerChipState.findPlayerById(players, t.borrowerId);
-                div.innerHTML = `
-                    <span>${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')}</span>
-                    <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>
-                `;
+                const settled = status[t.id] === 'settled';
+                span = `${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')} ${settled ? '（已結清）' : '（未結清）'}`;
+                if (!settled) {
+                    actions += ` <button class="btn btn-success" onclick="repayPlayerBorrow('${t.lenderId}','${t.borrowerId}')" style="padding:2px 8px;">還款</button>`;
+                }
+                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
+            } else if (t.type === 'player-repay') {
+                const l = PokerChipState.findPlayerById(players, t.lenderId);
+                const b = PokerChipState.findPlayerById(players, t.borrowerId);
+                span = `${t.time} - ${escapeHtml(b ? b.name : '?')} 還款給 ${escapeHtml(l ? l.name : '?')}`;
+                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
             }
+
+            div.innerHTML = `<span>${span}</span>${actions}`;
             log.appendChild(div);
         });
     }
 
     function deleteTransaction(index) {
+        // v7 E2 關鍵追加：刪除僅限最新一筆（避開 snapshot-restore 刪舊筆的歷史衝突）
+        if (!PokerChipState.canDeleteTransaction(transactions, index)) {
+            showToast('僅可刪除最新一筆；舊交易請用還款（玩家借貸）或歸還（公共）結清');
+            return;
+        }
         const t = transactions[index];
         pushUndoSnapshot('delete-transaction');
         PokerChipState.applyDeleteTransaction(players, t);
         transactions.splice(index, 1);
         renderSeats();
         renderTransactionLog();
+        updatePublicReturnButton();
+        updateGameTotals();
         saver.milestone();          // 離散變動同步寫盤（維度 c 決策 A）：鎖屏前必落地
         showToast('已刪除一筆帳目 · 點 ↶ 復原');
     }
