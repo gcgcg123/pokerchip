@@ -562,26 +562,47 @@
         return transactions.length > 0 && index === transactions.length - 1;
     }
 
-    // v7 E5：結清狀態。對 type 'player' 交易，依 (lenderId,borrowerId) 配對「後續」的 'player-repay'，
-    // 採 FIFO（最早未結清的借貸優先被還款結清）。回傳 { [txId]: 'settled' | 'open' }。
-    // 'player-repay' 與 'public' 不列入（無結清狀態）。
+    // v8 net-aware：結清狀態。回傳 { [txId]: 'settled' | 'netted' | 'open' }（僅 type 'player'）。
+    // 兩階段：
+    //  (1) 同方向還款（player-repay）以 FIFO 結清該方向最舊的借貸 → 'settled'。
+    //  (2) 跨方向抵銷：對每個無序配對 {X,Y}，forward 開放數與 reverse 開放數取 min 互抵 → 'netted'；
+    //      剩下 |淨額| 筆（優勢方向最新幾筆）維持 'open'（可結清）。
+    // 互借淨 0 → 全 'netted'、無 'open'（不顯示還款鈕，避免對已抵銷配對做虛假還款動作）。
+    // 'player-repay' 與 'public' 不列入。outstandingDebts 消費 'open' 即得 per 配對淨額。
     function settleStatus(transactions) {
         var status = {};
-        var queues = {};
+        var openQueues = {};   // key "lenderId|borrowerId" -> [txId...]（同方向、未被還款結清，最舊在前）
         function k(a, b) { return a + '|' + b; }
+        // (1) 同方向還款 FIFO：被還款結清的標 'settled' 並移出佇列
         (transactions || []).forEach(function (t) {
             if (!t || !t.id) return;
             if (t.type === 'player') {
                 var key = k(t.lenderId, t.borrowerId);
-                if (!queues[key]) queues[key] = [];
-                queues[key].push(t.id);
+                if (!openQueues[key]) openQueues[key] = [];
+                openQueues[key].push(t.id);
                 status[t.id] = 'open';
             } else if (t.type === 'player-repay') {
                 var key2 = k(t.lenderId, t.borrowerId);
-                if (queues[key2] && queues[key2].length > 0) {
-                    status[queues[key2].shift()] = 'settled';
+                if (openQueues[key2] && openQueues[key2].length > 0) {
+                    status[openQueues[key2].shift()] = 'settled';
                 }
             }
+        });
+        // (2) 跨方向抵銷：每個無序配對只處理一次，最舊 min(兩方向) 各互抵為 'netted'
+        var done = {};
+        Object.keys(openQueues).forEach(function (key) {
+            if (done[key]) return;
+            var parts = key.split('|');
+            var revKey = k(parts[1], parts[0]);
+            var fOpen = openQueues[key] || [];
+            var rOpen = openQueues[revKey] || [];
+            var offset = Math.min(fOpen.length, rOpen.length);
+            for (var i = 0; i < offset; i++) {
+                status[fOpen[i]] = 'netted';
+                status[rOpen[i]] = 'netted';
+            }
+            done[key] = true;
+            done[revKey] = true;
         });
         return status;
     }
@@ -1480,7 +1501,7 @@
         const log = document.getElementById('transactionLog');
         if (!log) return;
         log.innerHTML = '';
-        // v7 E5：結清狀態（player 借貸）；E2：刪除僅限最新一筆
+        // v8 net-aware：結清狀態（settled/netted/open）；E2：刪除僅限最新一筆；僅 open 顯示還款鈕
         const status = PokerChipState.settleStatus(transactions);
         const lastIndex = transactions.length - 1;
 
@@ -1499,9 +1520,12 @@
             } else if (t.type === 'player') {
                 const l = PokerChipState.findPlayerById(players, t.lenderId);
                 const b = PokerChipState.findPlayerById(players, t.borrowerId);
-                const settled = status[t.id] === 'settled';
-                span = `${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')} ${settled ? '（已結清）' : '（未結清）'}`;
-                if (!settled) {
+                // v8 net-aware：'open' 可結清（顯示還款鈕）；'settled' 已還款結清；'netted' 已跨方向抵銷。
+                const st = status[t.id];
+                const mark = st === 'settled' ? '（已結清）' : st === 'netted' ? '（已抵銷）' : '（未結清）';
+                span = `${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')} ${mark}`;
+                // 只有真正 open（淨額未結清）才顯示還款鈕；已結清/已抵銷一律不顯示（避免虛假還款動作）
+                if (st === 'open') {
                     actions += ` <button class="btn btn-success" onclick="repayPlayerBorrow('${t.lenderId}','${t.borrowerId}')" style="padding:2px 8px;">還款</button>`;
                 }
                 if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
