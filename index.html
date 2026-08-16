@@ -148,7 +148,7 @@
             
             <div id="balanceDisplay" class="balance-display">結餘：0</div>
             <div style="text-align:center;">
-                <button class="btn-main" id="btnOpenGame" onclick="navTo('page-game')" style="display:none; margin-top:20px;">開始牌局</button>
+                <button class="btn-main" id="btnOpenGame" onclick="startGame()" style="display:none; margin-top:20px;">開始牌局</button>
             </div>
         </div>
     </div>
@@ -562,13 +562,16 @@
         return transactions.length > 0 && index === transactions.length - 1;
     }
 
-    // v8 net-aware：結清狀態。回傳 { [txId]: 'settled' | 'netted' | 'open' }（僅 type 'player'）。
-    // 兩階段：
+    // v8 net-aware + v9 循環抵銷：結清狀態。回傳 { [txId]: 'settled' | 'netted' | 'open' }（僅 type 'player'）。
+    // 三階段：
     //  (1) 同方向還款（player-repay）以 FIFO 結清該方向最舊的借貸 → 'settled'。
     //  (2) 跨方向抵銷：對每個無序配對 {X,Y}，forward 開放數與 reverse 開放數取 min 互抵 → 'netted'；
-    //      剩下 |淨額| 筆（優勢方向最新幾筆）維持 'open'（可結清）。
-    // 互借淨 0 → 全 'netted'、無 'open'（不顯示還款鈕，避免對已抵銷配對做虛假還款動作）。
-    // 'player-repay' 與 'public' 不列入。outstandingDebts 消費 'open' 即得 per 配對淨額。
+    //      剩下 |淨額| 筆（優勢方向最新幾筆）維持 'open'。（即 2-cycle 抵銷，互借淨 0 → 全 'netted'）
+    //  (3) v9 圖形循環抵銷：對 per 配對淨額後的殘留有向圖（每配對至多一方向），反覆 DFS 找有向環
+    //      （3+ 人循環，如 A→B→C→A），取環上最小權重 w 全鏈抵銷 → 被抵銷的最舊 'open' 借貸改 'netted'；
+    //      直到無環，殘留為 DAG（最小結算）。鏈（A→B→C 無環）不被抵銷，維持 'open'（真實欠款）。
+    // 'open' = 殘留 DAG 邊（真實淨欠，可還款）；'netted' = 已抵銷（2-cycle 或 3+cycle，無還款鈕，避免虛假還款）。
+    // 'player-repay' 與 'public' 不列入。outstandingDebts 消費 'open' 即得殘留 DAG（最小結算）。
     function settleStatus(transactions) {
         var status = {};
         var openQueues = {};   // key "lenderId|borrowerId" -> [txId...]（同方向、未被還款結清，最舊在前）
@@ -588,7 +591,7 @@
                 }
             }
         });
-        // (2) 跨方向抵銷：每個無序配對只處理一次，最舊 min(兩方向) 各互抵為 'netted'
+        // (2) 跨方向抵銷（2-cycle）：每個無序配對只處理一次，最舊 min(兩方向) 各互抵為 'netted'
         var done = {};
         Object.keys(openQueues).forEach(function (key) {
             if (done[key]) return;
@@ -604,6 +607,61 @@
             done[key] = true;
             done[revKey] = true;
         });
+        // (3) v9 圖形循環抵銷（3+ cycle）：殘留圖每配對至多一方向，反覆找有向環抵銷 min 權重
+        var residual = {};  // key -> [open txId 最舊在前]（per 配對淨額後殘留）
+        Object.keys(openQueues).forEach(function (key) {
+            residual[key] = openQueues[key].filter(function (id) { return status[id] === 'open'; });
+        });
+        function wOf(key) { return residual[key] ? residual[key].length : 0; }
+        // 找一個有向環並抵銷；找不到回傳 false。每次抵銷使總權重嚴格遞減，必收斂。
+        function findCycleAndCancel() {
+            var adj = {};  // node -> [{to, key}]
+            Object.keys(residual).forEach(function (key) {
+                if (wOf(key) <= 0) return;
+                var parts = key.split('|');
+                var from = parts[0], to = parts[1];
+                if (from === to) return;            // 自借不存在，略
+                if (!adj[from]) adj[from] = [];
+                adj[from].push({ to: to, key: key });
+            });
+            var nodes = Object.keys(adj);
+            var visited = {}, onStack = {}, path = [], found = null;
+            function dfs(u) {
+                if (found) return;
+                visited[u] = true; onStack[u] = true;
+                var nbrs = adj[u] || [];
+                for (var i = 0; i < nbrs.length && !found; i++) {
+                    var e = nbrs[i];
+                    path.push({ from: u, to: e.to, key: e.key });
+                    if (onStack[e.to]) {
+                        var idx = 0;
+                        while (idx < path.length && path[idx].from !== e.to) idx++;
+                        found = path.slice(idx);   // 環 = e.to ... 回到 e.to 的邊序列
+                        return;
+                    }
+                    if (!visited[e.to]) dfs(e.to);
+                    path.pop();
+                }
+                onStack[u] = false;
+            }
+            for (var ni = 0; ni < nodes.length && !found; ni++) {
+                if (!visited[nodes[ni]]) dfs(nodes[ni]);
+            }
+            if (!found || found.length < 2) return false;
+            var minW = Infinity;
+            found.forEach(function (e) { var w = wOf(e.key); if (w < minW) minW = w; });
+            if (minW <= 0) return false;
+            found.forEach(function (e) {
+                for (var c = 0; c < minW; c++) {
+                    var id = residual[e.key].shift();   // 抵銷最舊 open → netted
+                    if (id) status[id] = 'netted';
+                }
+            });
+            return true;
+        }
+        // 反覆抵銷直到殘留圖無環（成 DAG）
+        var guard = 0;
+        while (findCycleAndCancel() && guard++ < 10000) {}
         return status;
     }
 
@@ -1191,6 +1249,15 @@
         if(pageId === 'page-game') renderGameTable();
         if(pageId === 'page-endgame') renderEndgameTable();
         saver.milestone();
+    }
+
+    // v9 G3：開始牌局 = 跨階段邊界。開局那一刻清空 undo stack（setup 動作視為「已提交」，
+    // 開局後不再可回退到 setup），避免牌局頁無紀錄時按 ↶ 復原跳回 setup（籌碼未分配）。
+    // setup 階段內的 undo 不受影響（add-player/auto-allocate 仍可於 setup 內復原）。
+    // 「返回遊戲」（endgame→game）維持 navTo，不清（進行中牌局歷史要保留）。
+    function startGame() {
+        try { storageAdapter.removeItem(PokerChipState.KEYS.UNDO_STACK); } catch (e) {}
+        navTo('page-game');
     }
 
     function addPlayerSetup() {
