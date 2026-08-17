@@ -562,21 +562,45 @@
         return transactions.length > 0 && index === transactions.length - 1;
     }
 
-    // v8 net-aware + v9 循環抵銷：結清狀態。回傳 { [txId]: 'settled' | 'netted' | 'open' }（僅 type 'player'）。
-    // 三階段：
-    //  (1) 同方向還款（player-repay）以 FIFO 結清該方向最舊的借貸 → 'settled'。
-    //  (2) 跨方向抵銷：對每個無序配對 {X,Y}，forward 開放數與 reverse 開放數取 min 互抵 → 'netted'；
-    //      剩下 |淨額| 筆（優勢方向最新幾筆）維持 'open'。（即 2-cycle 抵銷，互借淨 0 → 全 'netted'）
-    //  (3) v9 圖形循環抵銷：對 per 配對淨額後的殘留有向圖（每配對至多一方向），反覆 DFS 找有向環
-    //      （3+ 人循環，如 A→B→C→A），取環上最小權重 w 全鏈抵銷 → 被抵銷的最舊 'open' 借貸改 'netted'；
-    //      直到無環，殘留為 DAG（最小結算）。鏈（A→B→C 無環）不被抵銷，維持 'open'（真實欠款）。
-    // 'open' = 殘留 DAG 邊（真實淨欠，可還款）；'netted' = 已抵銷（2-cycle 或 3+cycle，無還款鈕，避免虛假還款）。
-    // 'player-repay' 與 'public' 不列入。outstandingDebts 消費 'open' 即得殘留 DAG（最小結算）。
+    // v10 黏性循環抵銷（sticky）：結清狀態。回傳 { [txId]: 'settled' | 'netted' | 'open' }（僅 type 'player'）。
+    // 依交易時序增量處理；循環「形成那一刻即凍結」，後續交易只能與「仍 open」的邊成環，
+    // 永不復用已凍結邊 → 已抵銷不再翻回還款（除非刪除最新一筆拆掉最近形成的環）。
+    //  - player 借貸：加入 open 圖後，DFS 找「從 borrowerId 回到 lenderId」的 open 路徑；
+    //    成環則凍結本筆 + 路徑上各邊最舊 open 筆 → 'netted'（移出 open 圖）。
+    //  - player-repay：FIFO 結清該方向最舊「仍 open」借貸 → 'settled'（跳過已凍結）。
+    // 殘留 open 邊 = 真實非循環淨欠（可還款）；'netted' = 已抵銷（無還款鈕，避免虛假還款）。
+    // 'public' 不列入。outstandingDebts 消費 'open' 即得殘留 DAG（最小結算）。
     function settleStatus(transactions) {
         var status = {};
-        var openQueues = {};   // key "lenderId|borrowerId" -> [txId...]（同方向、未被還款結清，最舊在前）
+        var openQueues = {};   // key "lenderId|borrowerId" -> [txId...]（仍 open，最舊在前；已凍結/已結清者已移出）
         function k(a, b) { return a + '|' + b; }
-        // (1) 同方向還款 FIFO：被還款結清的標 'settled' 並移出佇列
+        // 從 start 找一條回到 target 的 open 路徑（邊 key 序列）；不存在回傳 null。
+        function findPath(start, target) {
+            if (start === target) return null;          // 自借不存在，無自環
+            var adj = {};
+            Object.keys(openQueues).forEach(function (key) {
+                if (openQueues[key].length > 0) {
+                    var parts = key.split('|');
+                    if (parts[0] === parts[1]) return; // 自環略
+                    if (!adj[parts[0]]) adj[parts[0]] = [];
+                    adj[parts[0]].push({ to: parts[1], key: key });
+                }
+            });
+            var visited = {}, path = [];
+            function dfs(u) {
+                if (u === target) return true;
+                visited[u] = true;
+                var nbrs = adj[u] || [];
+                for (var i = 0; i < nbrs.length; i++) {
+                    if (visited[nbrs[i].to]) continue;
+                    path.push(nbrs[i].key);
+                    if (dfs(nbrs[i].to)) return true;
+                    path.pop();
+                }
+                return false;
+            }
+            return dfs(start) && path.length > 0 ? path : null;
+        }
         (transactions || []).forEach(function (t) {
             if (!t || !t.id) return;
             if (t.type === 'player') {
@@ -584,84 +608,25 @@
                 if (!openQueues[key]) openQueues[key] = [];
                 openQueues[key].push(t.id);
                 status[t.id] = 'open';
+                // 是否與現有 open 邊閉合成環？
+                var path = findPath(t.borrowerId, t.lenderId);
+                if (path) {
+                    status[t.id] = 'netted';                         // 凍結本筆
+                    var idx = openQueues[key].indexOf(t.id);
+                    if (idx >= 0) openQueues[key].splice(idx, 1);
+                    path.forEach(function (pkey) {                   // 凍結路徑各邊最舊 open
+                        if (openQueues[pkey] && openQueues[pkey].length > 0) {
+                            status[openQueues[pkey].shift()] = 'netted';
+                        }
+                    });
+                }
             } else if (t.type === 'player-repay') {
                 var key2 = k(t.lenderId, t.borrowerId);
                 if (openQueues[key2] && openQueues[key2].length > 0) {
-                    status[openQueues[key2].shift()] = 'settled';
+                    status[openQueues[key2].shift()] = 'settled';    // FIFO 結清最舊仍 open（跳過已凍結）
                 }
             }
         });
-        // (2) 跨方向抵銷（2-cycle）：每個無序配對只處理一次，最舊 min(兩方向) 各互抵為 'netted'
-        var done = {};
-        Object.keys(openQueues).forEach(function (key) {
-            if (done[key]) return;
-            var parts = key.split('|');
-            var revKey = k(parts[1], parts[0]);
-            var fOpen = openQueues[key] || [];
-            var rOpen = openQueues[revKey] || [];
-            var offset = Math.min(fOpen.length, rOpen.length);
-            for (var i = 0; i < offset; i++) {
-                status[fOpen[i]] = 'netted';
-                status[rOpen[i]] = 'netted';
-            }
-            done[key] = true;
-            done[revKey] = true;
-        });
-        // (3) v9 圖形循環抵銷（3+ cycle）：殘留圖每配對至多一方向，反覆找有向環抵銷 min 權重
-        var residual = {};  // key -> [open txId 最舊在前]（per 配對淨額後殘留）
-        Object.keys(openQueues).forEach(function (key) {
-            residual[key] = openQueues[key].filter(function (id) { return status[id] === 'open'; });
-        });
-        function wOf(key) { return residual[key] ? residual[key].length : 0; }
-        // 找一個有向環並抵銷；找不到回傳 false。每次抵銷使總權重嚴格遞減，必收斂。
-        function findCycleAndCancel() {
-            var adj = {};  // node -> [{to, key}]
-            Object.keys(residual).forEach(function (key) {
-                if (wOf(key) <= 0) return;
-                var parts = key.split('|');
-                var from = parts[0], to = parts[1];
-                if (from === to) return;            // 自借不存在，略
-                if (!adj[from]) adj[from] = [];
-                adj[from].push({ to: to, key: key });
-            });
-            var nodes = Object.keys(adj);
-            var visited = {}, onStack = {}, path = [], found = null;
-            function dfs(u) {
-                if (found) return;
-                visited[u] = true; onStack[u] = true;
-                var nbrs = adj[u] || [];
-                for (var i = 0; i < nbrs.length && !found; i++) {
-                    var e = nbrs[i];
-                    path.push({ from: u, to: e.to, key: e.key });
-                    if (onStack[e.to]) {
-                        var idx = 0;
-                        while (idx < path.length && path[idx].from !== e.to) idx++;
-                        found = path.slice(idx);   // 環 = e.to ... 回到 e.to 的邊序列
-                        return;
-                    }
-                    if (!visited[e.to]) dfs(e.to);
-                    path.pop();
-                }
-                onStack[u] = false;
-            }
-            for (var ni = 0; ni < nodes.length && !found; ni++) {
-                if (!visited[nodes[ni]]) dfs(nodes[ni]);
-            }
-            if (!found || found.length < 2) return false;
-            var minW = Infinity;
-            found.forEach(function (e) { var w = wOf(e.key); if (w < minW) minW = w; });
-            if (minW <= 0) return false;
-            found.forEach(function (e) {
-                for (var c = 0; c < minW; c++) {
-                    var id = residual[e.key].shift();   // 抵銷最舊 open → netted
-                    if (id) status[id] = 'netted';
-                }
-            });
-            return true;
-        }
-        // 反覆抵銷直到殘留圖無環（成 DAG）
-        var guard = 0;
-        while (findCycleAndCancel() && guard++ < 10000) {}
         return status;
     }
 
