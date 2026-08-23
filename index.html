@@ -1733,6 +1733,10 @@
 
     // 中途加入玩家
     function openAddPlayerModal() {
+        if (players.length >= MAX_PLAYERS) {
+            showToast('牌桌最多容納 12 位玩家');
+            return;
+        }
         if (currentBuyin === 0 && players.length > 0) {
             currentBuyin = players[0].buyin;
         }
@@ -1749,6 +1753,7 @@
     function addMidGamePlayer() {
         const nameInput = document.getElementById('midGamePlayerName');
         const name = nameInput.value.trim();
+        if (players.length >= MAX_PLAYERS) { showToast('牌桌最多容納 12 位玩家'); return; }
         if (!name) { showToast('請輸入玩家名稱'); return; }
         if (players.some(p => p.name === name)) { showToast('玩家名稱已存在'); return; }
         const buyin = currentBuyin || (players.length > 0 ? players[0].buyin : 0);
@@ -1762,6 +1767,7 @@
 
     let players = [];
     let transactions = [];
+    const MAX_PLAYERS = 12;
     const chipDenoms = [1000, 500, 100, 50, 20, 10, 5];
     let chipCounts = {};
     let currentBuyin = 0;
@@ -2112,6 +2118,7 @@
 
     function addPlayerSetup() {
         const name = document.getElementById('playerName').value.trim();
+        if (players.length >= MAX_PLAYERS) return showToast('牌桌最多容納 12 位玩家');
         if(!name) return showToast('請輸入玩家名稱');
         if(PokerChipState.hasDuplicateName(players, name)) return showToast('玩家名稱已存在');
         const buyinState = readPositiveChipField('playerBuyin');
@@ -2264,24 +2271,25 @@
         return canOpen;
     }
 
-    // T04：座位渲染與 select 渲染拆開（Bug D-1）。座位沿牌桌橢圓邊緣排列，
-    // 使用百分比座標讓桌面與手機版維持相同的相對位置。
+    // T04：座位渲染與 select 渲染拆開（Bug D-1）。12 個座位以牌桌中心為基準，
+    // 每 30 度等分橢圓周邊；加入順序先分配上下左右，再補齊斜角與剩餘位置。
     let activePlayerId = null;
     let playerDetailTimer = null;
     const SEAT_POSITIONS = [
-        { left: '10%', top: '31%' },  // a
-        { left: '8%', top: '50%' },   // b
-        { left: '10%', top: '69%' },  // c
-        { left: '25%', top: '86%' },  // d
-        { left: '42%', top: '92%' },  // e
-        { left: '58%', top: '92%' },  // f
-        { left: '75%', top: '86%' },  // g
-        { left: '90%', top: '69%' },  // h
-        { left: '92%', top: '50%' },  // i
-        { left: '25%', top: '12%' },  // 1
-        { left: '50%', top: '8%' },   // 2
-        { left: '75%', top: '12%' }   // 3
+        { left: '50%', top: '8%' },   // top
+        { left: '71%', top: '14%' },  // upper-right inner
+        { left: '86%', top: '29%' },  // upper-right outer
+        { left: '92%', top: '50%' },  // right
+        { left: '86%', top: '71%' },  // lower-right outer
+        { left: '71%', top: '86%' },  // lower-right inner
+        { left: '50%', top: '92%' },  // bottom
+        { left: '29%', top: '86%' },  // lower-left inner
+        { left: '14%', top: '71%' },  // lower-left outer
+        { left: '8%', top: '50%' },   // left
+        { left: '14%', top: '29%' },  // upper-left outer
+        { left: '29%', top: '14%' }   // upper-left inner
     ];
+    const SEAT_ORDER = [0, 6, 9, 3, 10, 4, 1, 7, 8, 2, 5, 11];
 
     function playerInitial(name) {
         const text = String(name || '').trim();
@@ -2352,7 +2360,7 @@
             const seat = document.createElement('button');
             seat.type = 'button';
             seat.className = 'player-seat' + (p.id === activePlayerId ? ' is-selected' : '');
-            const position = SEAT_POSITIONS[i % SEAT_POSITIONS.length];
+            const position = SEAT_POSITIONS[SEAT_ORDER[i % SEAT_ORDER.length]];
             seat.style.setProperty('--seat-left', position.left);
             seat.style.setProperty('--seat-top', position.top);
             seat.dataset.color = playerColorIndex(p.id, initial, usedColors);
