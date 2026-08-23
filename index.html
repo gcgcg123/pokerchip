@@ -1,25 +1,44 @@
 
-                        <!DOCTYPE html>
-                        <html lang="en">
-                        <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-							<style>
-								body {
-									background-color: white; /* Ensure the iframe has a white background */
-								}
-
-								
-							</style>
-                        </head>
-                        <body>
-                            <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
     <title>Poker Chip Master - 撲克籌碼結算工具</title>
+    <script>
+        (function () {
+            document.documentElement.dataset.pokerTheme = 'liquid';
+        }());
+    </script>
     <style>
+        :root {
+            --color-page: #151a19;
+            --color-surface: #202725;
+            --color-surface-raised: #29312f;
+            --color-surface-soft: #35403d;
+            --color-border: #485450;
+            --color-text: #f4f7f5;
+            --color-text-muted: #b7c1bd;
+            --color-action: #3b9d78;
+            --color-action-hover: #4bb58e;
+            --color-success: #42b883;
+            --color-warning: #e4ab45;
+            --color-danger: #d85d58;
+            --color-info: #5b9fd1;
+            --color-chip: #e0b84f;
+            --radius-control: 6px;
+            --radius-surface: 8px;
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 24px;
+            --space-6: 32px;
+            --shadow-surface: 0 8px 24px rgba(0, 0, 0, 0.18);
+            --focus-ring: 0 0 0 3px rgba(91, 159, 209, 0.35);
+        }
+
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #1a1a1a; color: #fff; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .page { display: none; animation: fadeIn 0.5s; }
@@ -52,16 +71,15 @@
         
         /* 第二點修復：橫放 Poker Table (手機友好) */
         .poker-table-container { position: relative; width: 100%; max-width: 800px; height: 450px; margin: 0 auto; background: transparent; }
-        .poker-table { width: 100%; height: 100%; background: #27ae60; border: 12px solid #5d4037; border-radius: 225px; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        .poker-table::before { content: 'POKER'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(0,0,0,0.3); font-size: 1.5em; font-weight: bold; letter-spacing: 5px; }
+        .poker-table { box-sizing: border-box; width: 100%; height: 100%; background: #27ae60; border: 12px solid #5d4037; border-radius: 225px; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
         .player-spot { position: absolute; background: #333; padding: 6px 10px; border-radius: 20px; font-size: 0.75em; text-align: center; min-width: 70px; border: 2px solid #f1c40f; transform: translate(-50%, -50%); z-index: 10; }
         .player-stats { font-size: 0.65em; color: #ccc; margin-top: 3px; }
         .player-stats div { margin: 1px 0; }
         
-        .btn-add-player { position: absolute; top: 10px; right: 10px; z-index: 20; background: #2ecc71; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; cursor: pointer; transition: 0.3s; }
+        .btn-add-player { background: #2ecc71; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-size: 0.9em; cursor: pointer; transition: 0.3s; }
         .btn-add-player:hover { background: #27ae60; transform: scale(1.05); }
-        .controls { text-align: center; margin-top: 20px; }
+        .controls { text-align: center; margin-top: 32px; }
         .borrow-controls { display: flex; justify-content: center; gap: 15px; margin: 10px 0; flex-wrap: wrap; }
         .borrow-controls select { min-width: 120px; }
         .transaction-log { background: #333; padding: 10px; border-radius: 5px; margin-top: 10px; max-height: 200px; overflow-y: auto; }
@@ -103,6 +121,521 @@
         #recoveryBanner { position: fixed; top: 0; left: 0; right: 0; background: #e74c3c; color: #fff; padding: 10px 16px; font-size: 0.9em; z-index: 200; display: none; }
         #recoveryBanner button { background: #fff; color: #e74c3c; border: none; padding: 3px 12px; border-radius: 4px; cursor: pointer; margin-left: 8px; }
         #spectatorBanner { position: fixed; top: 0; left: 0; right: 0; background: #3498db; color: #fff; padding: 10px 16px; font-size: 0.9em; z-index: 201; display: none; }
+
+        /* Stage 1: shared visual tokens and stable touch-first controls. */
+        html { background: var(--color-page); }
+        body {
+            background: var(--color-page);
+            color: var(--color-text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            line-height: 1.45;
+        }
+        .container { max-width: 1100px; padding: var(--space-5); }
+        .page { animation: none; }
+        .page h1, .page h2, .page h3, .page h4 { color: var(--color-text); line-height: 1.25; }
+        .page h2 { margin: 0 0 var(--space-5); }
+        .cover { padding: clamp(64px, 12vh, 120px) 20px; }
+        .cover h1 { margin-bottom: var(--space-2); font-size: clamp(2rem, 6vw, 3.25rem); }
+        .cover h2 { color: var(--color-text-muted); font-size: 1.1rem; font-weight: 400; }
+        .card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-surface);
+            box-shadow: var(--shadow-surface);
+            padding: var(--space-5);
+            margin-bottom: var(--space-5);
+        }
+        .btn, .btn-main, .btn-add-player {
+            min-height: 40px;
+            border-radius: var(--radius-control);
+            font: inherit;
+            font-weight: 600;
+            transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+        }
+        .btn {
+            background: var(--color-action);
+            border: 1px solid var(--color-action);
+            padding: 8px 14px;
+            margin: var(--space-1);
+        }
+        .btn:hover { background: var(--color-action-hover); border-color: var(--color-action-hover); transform: none; }
+        .btn:focus-visible, .btn-main:focus-visible, .btn-add-player:focus-visible, input:focus-visible, select:focus-visible {
+            outline: none;
+            box-shadow: var(--focus-ring);
+        }
+        .btn:disabled, .btn-main:disabled, .btn-add-player:disabled { cursor: not-allowed; opacity: 0.48; }
+        .btn-danger { background: var(--color-danger); border-color: var(--color-danger); }
+        .btn-success { background: var(--color-success); border-color: var(--color-success); }
+        .btn-warning { background: var(--color-warning); border-color: var(--color-warning); color: #1d211f; }
+        .btn-main {
+            background: var(--color-action);
+            border: 1px solid var(--color-action);
+            border-radius: var(--radius-control);
+            padding: 12px 24px;
+            font-size: 1rem;
+        }
+        .btn-main:hover { background: var(--color-action-hover); transform: none; }
+        .btn-add-player { background: var(--color-action); border-radius: var(--radius-control); padding: 8px 14px; }
+        input, select {
+            min-height: 40px;
+            box-sizing: border-box;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-control);
+            background: var(--color-surface-raised);
+            color: var(--color-text);
+            font: inherit;
+        }
+        input::placeholder { color: var(--color-text-muted); }
+        input[readonly] { cursor: default; color: var(--color-chip); opacity: .82; }
+        input[aria-invalid="true"] { border-color: var(--color-danger); box-shadow: 0 0 0 3px rgba(216, 93, 88, .18); }
+        label { color: var(--color-text-muted); }
+        .input-group { margin: var(--space-3) 0; }
+        .chip-box, .transaction-log, .balance-display { background: var(--color-surface-raised); border: 1px solid var(--color-border); }
+        .chip-box { border-radius: var(--radius-control); }
+        .chip-label, .mobile-table th { color: var(--color-chip); }
+        .balance-display { border-radius: var(--radius-control); }
+        .transaction-log { border-radius: var(--radius-control); padding: var(--space-2); }
+        .transaction-item { background: var(--color-surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: var(--space-2) var(--space-3); align-items: center; gap: var(--space-2); }
+        .player-spot { background: var(--color-surface); border-color: var(--color-chip); border-radius: var(--radius-control); }
+        .player-stats { color: var(--color-text-muted); }
+        .mobile-table { background: var(--color-surface); border-radius: var(--radius-control); overflow: hidden; }
+        .mobile-table th { background: var(--color-surface-raised); }
+        .mobile-table td { border-color: var(--color-border); }
+        .footer { color: var(--color-text-muted); }
+        .modal-content { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-surface); box-shadow: var(--shadow-surface); }
+        .toast { background: var(--color-surface-raised); border-color: var(--color-warning); border-radius: var(--radius-control); }
+        #privacyBanner { background: var(--color-warning); }
+        #recoveryBanner { background: var(--color-danger); }
+        #spectatorBanner { background: var(--color-info); }
+
+        /* Stage 2: setup workflow. */
+        .setup-shell { max-width: 920px; margin: 0 auto; }
+        .setup-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+        .setup-heading h2 { margin: 0; }
+        .setup-heading-note { color: var(--color-text-muted); font-size: 0.875rem; }
+        .section-heading { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+        .section-heading h3 { margin: 0; font-size: 1rem; }
+        .section-index { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: var(--color-surface-raised); border: 1px solid var(--color-border); color: var(--color-chip); font-weight: 700; }
+        .setup-form-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(140px, 0.8fr) auto; gap: var(--space-3); align-items: end; }
+        .field { display: grid; gap: var(--space-2); min-width: 0; }
+        .field label { font-size: 0.8rem; font-weight: 600; }
+        .field input, .field select { width: 100%; }
+        .setup-add-button { min-width: 112px; margin: 0; }
+        .setup-player-list { display: grid; gap: var(--space-2); margin-top: var(--space-5); }
+        .setup-player-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); min-height: 48px; padding: var(--space-2) var(--space-3); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
+        .setup-player-number { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--color-surface-soft); color: var(--color-text-muted); font-size: 0.8rem; font-weight: 700; }
+        .setup-player-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+        .setup-player-buyin { color: var(--color-chip); font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .setup-player-remove { min-height: 34px; padding: 4px 10px; margin: 0; }
+        .setup-empty { padding: var(--space-5); border: 1px dashed var(--color-border); border-radius: var(--radius-control); color: var(--color-text-muted); text-align: center; }
+        .blind-controls { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)) auto; gap: var(--space-3); align-items: end; margin-bottom: var(--space-5); }
+        .allocate-button { min-width: 150px; margin: 0; }
+        .allocation-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0 0 var(--space-4); }
+        .allocation-stat { padding: var(--space-3) var(--space-4); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
+        .allocation-stat-label { display: block; margin-bottom: var(--space-1); color: var(--color-text-muted); font-size: 0.78rem; }
+        .allocation-stat-value { color: var(--color-text); font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .setup-allocation .chip-row { justify-content: stretch; display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)); gap: var(--space-3); }
+        .setup-allocation .chip-box { min-width: 0; padding: var(--space-3); }
+        .setup-allocation .chip-box input { width: 100% !important; min-width: 0; }
+        .setup-allocation .balance-display { margin-top: var(--space-4); }
+        .setup-primary-action { display: flex; justify-content: flex-end; margin-top: var(--space-5); }
+        .setup-primary-action .btn-main { width: min(100%, 240px); margin: 0; }
+
+        /* Stage 3: live game workflow. */
+        .game-shell { max-width: 1000px; margin: 0 auto; }
+        .game-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+        .game-heading h2 { margin: 0; }
+        .game-heading-note { color: var(--color-text-muted); font-size: .85rem; }
+        .game-summary { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(0, 1.3fr); margin-bottom: var(--space-5); overflow: hidden; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-surface); box-shadow: var(--shadow-surface); }
+        .game-summary-item { min-width: 0; padding: var(--space-4) var(--space-5); text-align: left; }
+        .game-summary-item + .game-summary-item { border-left: 1px solid var(--color-border); }
+        .game-summary-label { display: block; margin-bottom: var(--space-1); color: var(--color-text-muted); font-size: .76rem; font-weight: 600; }
+        .game-summary-value { color: var(--color-chip); font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+        #outstandingDebtsDisplay { color: var(--color-warning); font-size: .9rem; line-height: 1.5; overflow-wrap: anywhere; }
+        #outstandingDebtsDisplay.is-clear { color: var(--color-success); }
+        .game-actions-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); text-align: left; }
+        .operation-card { display: flex; flex-direction: column; min-width: 0; margin-bottom: 0; }
+        .operation-card h3 { margin: 0 0 var(--space-4); font-size: 1rem; }
+        .operation-field { display: grid; gap: var(--space-2); min-width: 0; }
+        .operation-field label { font-size: .78rem; font-weight: 600; }
+        .operation-field select { width: 100%; }
+        .operation-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: auto; padding-top: var(--space-4); }
+        .operation-actions .btn { flex: 1 1 150px; margin: 0; }
+        .player-borrow-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+        .transaction-section { margin-top: var(--space-5); text-align: left; }
+        .transaction-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+        .transaction-heading h3 { margin: 0; font-size: 1rem; }
+        .transaction-heading span { color: var(--color-text-muted); font-size: .75rem; }
+        .transaction-log { display: grid; gap: var(--space-2); max-height: 320px; margin-top: 0; padding: var(--space-2); }
+        .transaction-item { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); min-height: 48px; margin: 0; padding: var(--space-2) var(--space-3); }
+        .transaction-time { color: var(--color-text-muted); font-size: .74rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .transaction-description { min-width: 0; overflow-wrap: anywhere; }
+        .transaction-status { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; padding: 2px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+        .transaction-status--open { color: var(--color-warning); background: rgba(228, 171, 69, .1); border-color: rgba(228, 171, 69, .36); }
+        .transaction-status--settled, .transaction-status--repaid { color: var(--color-success); background: rgba(66, 184, 131, .1); border-color: rgba(66, 184, 131, .34); }
+        .transaction-status--netted { color: var(--color-info); background: rgba(91, 159, 209, .1); border-color: rgba(91, 159, 209, .34); }
+        .transaction-status--public { color: var(--color-text-muted); background: rgba(183, 193, 189, .08); }
+        .transaction-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+        .transaction-actions:empty { display: none; }
+        .transaction-action { min-height: 32px; margin: 0; padding: 4px 10px; font-size: .75rem; }
+        .transaction-empty { padding: var(--space-5); color: var(--color-text-muted); text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-control); }
+        .game-footer-actions { display: flex; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-5); }
+        .game-footer-actions .btn { margin: 0; }
+        body.is-spectator .game-actions-grid,
+        body.is-spectator .transaction-section,
+        body.is-spectator .game-footer-actions { opacity: .72; }
+
+        /* Stage 4: settlement and reconciliation. */
+        .settlement-shell { max-width: 1000px; margin: 0 auto; }
+        .settlement-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+        .settlement-heading h2 { margin: 0; }
+        .settlement-heading-note { color: var(--color-text-muted); font-size: .85rem; }
+        .settlement-intro { margin: 0 0 var(--space-5); color: var(--color-text-muted); }
+        .reconciliation-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
+        .reconciliation-summary--final { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .reconciliation-stat { min-width: 0; padding: var(--space-3) var(--space-4); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
+        .reconciliation-stat-label { display: block; margin-bottom: var(--space-1); color: var(--color-text-muted); font-size: .74rem; }
+        .reconciliation-stat-value { display: block; overflow-wrap: anywhere; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+        .reconciliation-stat--difference .reconciliation-stat-value { color: var(--color-warning); }
+        .reconciliation-stat--difference.is-balanced .reconciliation-stat-value { color: var(--color-success); }
+        .reconciliation-stat--difference.is-invalid .reconciliation-stat-value { color: var(--color-danger); }
+        .settlement-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-control); }
+        .settlement-table-wrap .mobile-table { min-width: 720px; margin-top: 0; border: 0; border-radius: 0; }
+        .settlement-table-wrap--final .mobile-table { min-width: 560px; }
+        #endgameTable th:first-child, #endgameTable td:first-child,
+        #settlementTable th:first-child, #settlementTable td:first-child { text-align: left; }
+        #endgameTable th:not(:first-child), #endgameTable td:not(:first-child),
+        #settlementTable th:not(:first-child), #settlementTable td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+        #endgameTable .dealer-tip-note { text-align: left; }
+        .reconciliation-state { display: none; margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid; border-radius: var(--radius-control); font-weight: 600; }
+        .reconciliation-state--error { color: var(--color-danger); background: rgba(216, 93, 88, .09); border-color: rgba(216, 93, 88, .34); }
+        .reconciliation-state--success { color: var(--color-success); background: rgba(66, 184, 131, .09); border-color: rgba(66, 184, 131, .34); }
+        .settlement-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-5); }
+        .settlement-actions-group { display: flex; gap: var(--space-2); }
+        .settlement-actions .btn { margin: 0; }
+        .settlement-result { margin-bottom: var(--space-4); }
+        .settlement-result h3 { margin: 0 0 var(--space-2); }
+        .settlement-result p { margin: 0; color: var(--color-text-muted); }
+        .settlement-result.is-success h3 { color: var(--color-success); }
+        .settlement-result.is-error h3 { color: var(--color-danger); }
+        .validation-message { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--radius-control); font-size: .95rem; font-weight: 700; }
+        .validation-message:empty { display: none; }
+        .validation-message.is-success { color: var(--color-success); background: rgba(66, 184, 131, .09); border: 1px solid rgba(66, 184, 131, .34); }
+        .validation-message.is-error { color: var(--color-danger); background: rgba(216, 93, 88, .09); border: 1px solid rgba(216, 93, 88, .34); }
+
+        /* Poker visual previews: one implementation, presentation-only themes. */
+        .table-center-overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; pointer-events: none; }
+        .table-wordmark { color: rgba(0, 0, 0, .3); font-size: 1.5em; font-weight: 700; letter-spacing: 5px; text-indent: 5px; line-height: 1; }
+        .table-center-overlay .btn-add-player { min-width: 116px; margin: 0; white-space: nowrap; pointer-events: auto; background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
+        .table-center-overlay .btn-add-player:hover,
+        .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: none; }
+        .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: scale(.97); }
+        .confirm-modal-content { display: flex; flex-direction: column; width: min(820px, calc(100% - 32px)); max-width: 820px; max-height: 88dvh; margin: 6vh auto; padding: 0; overflow: hidden; }
+        .confirm-modal-header { padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--color-border); }
+        .confirm-modal-header h3 { margin: 0 0 var(--space-2); }
+        .confirm-modal-header p { margin: 0; color: var(--color-text-muted); font-size: .9rem; }
+        #confirmDetails { padding: var(--space-5); overflow: auto; }
+        .confirm-table-wrap { overflow-x: auto; border-radius: var(--radius-control); }
+        .confirm-settlement-table { margin: 0; min-width: 560px; }
+        .confirm-settlement-table th:first-child, .confirm-settlement-table td:first-child { text-align: left; }
+        .confirm-settlement-table th:not(:first-child), .confirm-settlement-table td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+        .confirm-settlement-table td { padding: 11px 10px; }
+        .confirm-profit-positive { color: var(--color-success); font-weight: 700; }
+        .confirm-profit-negative { color: var(--color-danger); font-weight: 700; }
+        .dealer-tip-row td, .dealer-tip-summary-row td { background: rgba(243, 205, 104, .08); border-top: 1px solid rgba(243, 205, 104, .38); }
+        .dealer-tip-row td:first-child, .dealer-tip-summary-row td:first-child { color: var(--color-chip); }
+        .settlement-number-input { width: 96px !important; min-width: 88px; text-align: right !important; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+        .settlement-number-input::-webkit-inner-spin-button,
+        .settlement-number-input::-webkit-outer-spin-button { margin: 0; -webkit-appearance: none; appearance: none; }
+        .settlement-number-input[aria-invalid="true"] { border-color: var(--color-danger); box-shadow: 0 0 0 3px rgba(216, 93, 88, .18); }
+        .dealer-tip-note { color: var(--color-text-muted); font-size: .82rem; }
+        .confirm-reconciliation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-4); }
+        .confirm-reconciliation-item { padding: var(--space-3); background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-control); }
+        .confirm-reconciliation-item span { display: block; color: var(--color-text-muted); font-size: .75rem; margin-bottom: var(--space-1); }
+        .confirm-reconciliation-item strong { font-variant-numeric: tabular-nums; }
+        .confirm-modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); padding: 0 var(--space-5) var(--space-5); }
+        .confirm-modal-actions .btn { margin: 0; }
+        :root[data-poker-theme="liquid"] {
+            --color-page: #0b211a;
+            --color-surface: rgba(27, 62, 51, .43);
+            --color-surface-raised: rgba(43, 86, 71, .33);
+            --color-surface-soft: rgba(58, 104, 88, .23);
+            --color-border: rgba(220, 242, 233, .25);
+            --color-action: rgba(190, 69, 64, .82);
+            --color-action-hover: rgba(211, 84, 78, .92);
+            --color-success: #55c58c;
+            --color-warning: #efc15b;
+            --color-danger: rgba(188, 55, 54, .86);
+            --color-info: #6ba9d3;
+            --color-chip: #f3cd68;
+            --radius-control: 8px;
+            --radius-surface: 12px;
+            --shadow-surface: 0 10px 24px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .19);
+            --focus-ring: 0 0 0 3px rgba(243, 205, 104, .27);
+        }
+        html[data-poker-theme="liquid"] body {
+            background-color: var(--color-page);
+            background-image: url('assets/poker-suits.svg');
+            background-size: 180px 180px;
+        }
+        html[data-poker-theme="liquid"] .card,
+        html[data-poker-theme="liquid"] .modal-content {
+            -webkit-backdrop-filter: blur(12px) saturate(1.12);
+            backdrop-filter: blur(12px) saturate(1.12);
+            background: var(--color-surface);
+            border-color: var(--color-border);
+            box-shadow: var(--shadow-surface);
+        }
+        html[data-poker-theme="liquid"] .modal-content { background: rgba(27, 62, 51, .82); }
+        html[data-poker-theme="liquid"] .transaction-log,
+        html[data-poker-theme="liquid"] .balance-display,
+        html[data-poker-theme="liquid"] .allocation-stat {
+            background: var(--color-surface-raised);
+            border-color: rgba(235, 248, 242, .2);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .1);
+        }
+        html[data-poker-theme="liquid"] .card,
+        html[data-poker-theme="liquid"] .modal-content {
+            position: relative;
+            overflow: hidden;
+        }
+        html[data-poker-theme="liquid"] .card::before,
+        html[data-poker-theme="liquid"] .modal-content::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+            pointer-events: none;
+        }
+        html[data-poker-theme="liquid"] input,
+        html[data-poker-theme="liquid"] select,
+        html[data-poker-theme="liquid"] .chip-box,
+        html[data-poker-theme="liquid"] .setup-player-row,
+        html[data-poker-theme="liquid"] .transaction-item {
+            background: var(--color-surface-raised);
+            border-color: rgba(235, 248, 242, .2);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 4px 12px rgba(0, 0, 0, .11);
+        }
+        html[data-poker-theme="liquid"] input:focus,
+        html[data-poker-theme="liquid"] select:focus {
+            border-color: rgba(243, 205, 104, .64);
+            background: rgba(58, 108, 91, .62);
+        }
+        html[data-poker-theme="liquid"] .btn,
+        html[data-poker-theme="liquid"] .btn-main,
+        html[data-poker-theme="liquid"] .btn-add-player {
+            position: relative;
+            overflow: hidden;
+            border-color: rgba(255, 255, 255, .24);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .22), 0 7px 18px rgba(0, 0, 0, .18);
+            transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 120ms ease;
+        }
+        html[data-poker-theme="liquid"] .btn:not(.btn-danger):not(.btn-success):not(.btn-warning),
+        html[data-poker-theme="liquid"] .btn-main { background: var(--color-action); }
+        html[data-poker-theme="liquid"] .btn:hover,
+        html[data-poker-theme="liquid"] .btn-main:hover,
+        html[data-poker-theme="liquid"] .btn-add-player:hover {
+            border-color: rgba(255, 255, 255, .4);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .3), 0 9px 22px rgba(0, 0, 0, .22);
+        }
+        html[data-poker-theme="liquid"] .btn:active,
+        html[data-poker-theme="liquid"] .btn-main:active,
+        html[data-poker-theme="liquid"] .btn-add-player:active { transform: scale(.975); }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player { background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:hover,
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: none; }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: scale(.97); }
+        html[data-poker-theme="liquid"] .btn-danger { background: var(--color-danger); }
+        html[data-poker-theme="liquid"] .btn-success { background: rgba(52, 149, 99, .82); }
+        html[data-poker-theme="liquid"] .btn-warning { background: rgba(224, 169, 63, .88); }
+        html[data-poker-theme="liquid"] .section-index,
+        html[data-poker-theme="liquid"] .setup-player-number {
+            background: rgba(20, 53, 43, .62);
+            border: 1px solid rgba(243, 205, 104, .64);
+            color: var(--color-chip);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .17), 0 4px 12px rgba(0, 0, 0, .2);
+        }
+        html[data-poker-theme="liquid"] .player-spot {
+            background: rgba(20, 48, 40, .74);
+            border-color: rgba(243, 205, 104, .75);
+            box-shadow: inset 0 1px rgba(255, 255, 255, .15), 0 8px 18px rgba(0, 0, 0, .24);
+        }
+        html[data-poker-theme="liquid"] .mobile-table {
+            background: rgba(20, 51, 42, .58);
+            border: 1px solid var(--color-border);
+            box-shadow: var(--shadow-surface);
+        }
+        html[data-poker-theme="liquid"] .mobile-table th { background: rgba(58, 104, 88, .5); }
+        html[data-poker-theme="liquid"] .modal {
+            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(4px);
+            background: rgba(2, 12, 9, .67);
+        }
+        html[data-poker-theme="liquid"] .toast {
+            -webkit-backdrop-filter: blur(12px) saturate(1.1);
+            backdrop-filter: blur(12px) saturate(1.1);
+            background: rgba(35, 72, 60, .82);
+            border-color: rgba(243, 205, 104, .55);
+            box-shadow: 0 14px 30px rgba(0, 0, 0, .3), inset 0 1px rgba(255, 255, 255, .18);
+        }
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+            html[data-poker-theme="liquid"] .card,
+            html[data-poker-theme="liquid"] .modal-content { background: rgba(24, 61, 49, .96); }
+            html[data-poker-theme="liquid"] input,
+            html[data-poker-theme="liquid"] select,
+            html[data-poker-theme="liquid"] .chip-box,
+            html[data-poker-theme="liquid"] .setup-player-row,
+            html[data-poker-theme="liquid"] .transaction-item { background: rgba(39, 79, 65, .96); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html[data-poker-theme="liquid"] *,
+            html[data-poker-theme="liquid"] *::before,
+            html[data-poker-theme="liquid"] *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: var(--space-4) var(--space-3); }
+            .cover { padding: 64px 12px; }
+            .card { padding: var(--space-4); margin-bottom: var(--space-4); }
+            .btn, .btn-main, .btn-add-player { min-height: 44px; }
+            .controls { margin-top: 24px; }
+            .table-center-overlay { gap: 14px; }
+            .table-center-overlay .btn-add-player { min-height: 40px; min-width: 108px; }
+            .transaction-item { align-items: flex-start; flex-wrap: wrap; }
+            .transaction-item > span { flex: 1 1 180px; }
+            .transaction-item button { margin-left: 0; }
+            .setup-heading { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
+            .setup-form-grid, .blind-controls { grid-template-columns: 1fr; }
+            .setup-add-button, .allocate-button { width: 100%; }
+            .setup-player-row { grid-template-columns: 32px minmax(0, 1fr) auto; }
+            .setup-player-buyin { grid-column: 2; }
+            .setup-player-remove { grid-column: 3; grid-row: 1 / span 2; }
+            .setup-allocation .chip-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .allocation-summary { grid-template-columns: 1fr 1fr; }
+            .setup-primary-action .btn-main { width: 100%; }
+            .game-heading { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
+            .game-summary { grid-template-columns: 1fr; }
+            .game-summary-item { padding: var(--space-3) var(--space-4); }
+            .game-summary-item + .game-summary-item { border-top: 1px solid var(--color-border); border-left: 0; }
+            .game-actions-grid { grid-template-columns: 1fr; gap: var(--space-4); }
+            .player-borrow-fields { grid-template-columns: 1fr; }
+            .transaction-heading { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
+            .transaction-log { max-height: 360px; }
+            .transaction-item { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); }
+            .transaction-time { grid-column: 1; grid-row: 1; }
+            .transaction-status { grid-column: 2; grid-row: 1; }
+            .transaction-description { grid-column: 1 / -1; grid-row: 2; }
+            .transaction-actions { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; }
+            .transaction-action { min-height: 36px; }
+            .game-footer-actions { align-items: stretch; flex-direction: column; }
+            .game-footer-actions .btn { width: 100%; }
+            .settlement-heading { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
+            .reconciliation-summary, .reconciliation-summary--final { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .settlement-actions { align-items: stretch; flex-direction: column; }
+            .settlement-actions-group { flex-direction: column; }
+            .settlement-actions .btn { width: 100%; }
+            .confirm-reconciliation { grid-template-columns: 1fr; }
+            .settlement-number-input { width: 88px !important; }
+            html[data-poker-theme="liquid"] .card,
+            html[data-poker-theme="liquid"] .modal-content {
+                -webkit-backdrop-filter: blur(8px) saturate(1.06);
+                backdrop-filter: blur(8px) saturate(1.06);
+            }
+        }
+
+        /* Stage 5: iOS safe areas, dynamic viewport and accessible interactions. */
+        :root { --app-banner-offset: 0px; }
+        body { min-height: 100vh; min-height: 100dvh; }
+        body.modal-open { overflow: hidden; }
+        .container {
+            box-sizing: border-box;
+            padding-top: calc(var(--space-5) + var(--app-banner-offset));
+            padding-right: max(var(--space-5), env(safe-area-inset-right));
+            padding-bottom: max(var(--space-5), env(safe-area-inset-bottom));
+            padding-left: max(var(--space-5), env(safe-area-inset-left));
+        }
+        .app-banner-stack { display: none; position: fixed; inset: 0 0 auto; z-index: 210; }
+        .app-banner-stack.has-visible-banner { display: block; padding-top: env(safe-area-inset-top); }
+        #privacyBanner, #recoveryBanner, #spectatorBanner {
+            position: static;
+            box-sizing: border-box;
+            width: 100%;
+            padding: var(--space-2) max(var(--space-4), env(safe-area-inset-right)) var(--space-2) max(var(--space-4), env(safe-area-inset-left));
+            line-height: 1.45;
+        }
+        .app-banner-content { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); max-width: 1100px; margin: 0 auto; }
+        .app-banner-actions { display: flex; flex: 0 0 auto; gap: var(--space-2); }
+        #privacyBanner button, #recoveryBanner button {
+            float: none;
+            min-width: 44px;
+            min-height: 44px;
+            margin: 0;
+            padding: 6px 12px;
+            font: inherit;
+        }
+        .toast {
+            bottom: max(20px, calc(env(safe-area-inset-bottom) + 12px));
+            box-sizing: border-box;
+            width: max-content;
+            max-width: calc(100% - max(24px, env(safe-area-inset-left)) - max(24px, env(safe-area-inset-right)));
+            overflow-wrap: anywhere;
+        }
+        .modal {
+            inset: 0;
+            box-sizing: border-box;
+            width: auto;
+            height: 100vh;
+            height: 100dvh;
+            align-items: flex-start;
+            justify-content: center;
+            overflow: auto;
+            overscroll-behavior: contain;
+            padding: max(var(--space-4), env(safe-area-inset-top)) max(var(--space-4), env(safe-area-inset-right)) max(var(--space-4), env(safe-area-inset-bottom)) max(var(--space-4), env(safe-area-inset-left));
+        }
+        .modal.is-open { display: flex; }
+        .modal-content { box-sizing: border-box; width: min(600px, 100%); max-height: calc(100dvh - max(32px, env(safe-area-inset-top)) - max(32px, env(safe-area-inset-bottom))); margin: auto; overflow: auto; }
+        .confirm-modal-content { width: min(820px, 100%); max-height: calc(100dvh - max(32px, env(safe-area-inset-top)) - max(32px, env(safe-area-inset-bottom))); margin: auto; }
+        .settlement-table-wrap, .confirm-table-wrap { -webkit-overflow-scrolling: touch; overscroll-behavior-inline: contain; }
+        input:disabled, select:disabled, input[readonly] { border-style: dashed; }
+
+        @media (max-width: 600px) {
+            .container {
+                padding-top: calc(var(--space-4) + var(--app-banner-offset));
+                padding-right: max(var(--space-3), env(safe-area-inset-right));
+                padding-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+                padding-left: max(var(--space-3), env(safe-area-inset-left));
+            }
+            input, select { min-height: 44px; font-size: 16px; }
+            .table-center-overlay .btn-add-player, .setup-player-remove, .transaction-action { min-height: 44px; }
+            .player-spot { min-width: 64px; font-size: .8125rem; }
+            .player-stats { font-size: .75rem; }
+            .mobile-table { font-size: .8125rem; }
+            .transaction-time, .transaction-heading span, .transaction-status { font-size: .8125rem; }
+            .reconciliation-stat-label, .game-summary-label, .allocation-stat-label { font-size: .8rem; }
+            .app-banner-content { align-items: flex-start; }
+            .app-banner-actions { flex-wrap: wrap; justify-content: flex-end; }
+            .modal { padding: max(var(--space-3), env(safe-area-inset-top)) max(var(--space-3), env(safe-area-inset-right)) max(var(--space-3), env(safe-area-inset-bottom)) max(var(--space-3), env(safe-area-inset-left)); }
+            .modal-content, .confirm-modal-content { max-height: calc(100dvh - max(24px, env(safe-area-inset-top)) - max(24px, env(safe-area-inset-bottom))); }
+            .confirm-modal-header { padding: var(--space-4); }
+            #confirmDetails { padding: var(--space-4); }
+            .confirm-modal-actions { padding: 0 var(--space-4) var(--space-4); }
+            .confirm-modal-actions .btn { flex: 1 1 140px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                scroll-behavior: auto !important;
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
+        }
     </style>
 </head>
 
@@ -119,100 +652,152 @@
 
     <!-- 開局前設定 (Before Starting) -->
     <div id="page-setup" class="page">
-        <h2>開局前設定</h2>
-        <div class="card">
-            <h3>一、玩家與 Buy-in 金額</h3>
-            <div class="input-group">
-                <input type="text" id="playerName" placeholder="玩家名稱">
-                <input type="number" id="playerBuyin" placeholder="Buy-in 金額" value="5000">
-                <button class="btn" onclick="addPlayerSetup()">加入玩家</button>
+        <div class="setup-shell">
+            <div class="setup-heading">
+                <h2>開局前設定</h2>
+                <span class="setup-heading-note">固定 Buy-in 牌局</span>
             </div>
-            <div id="setupPlayerList"></div>
-        </div>
+            <section class="card" aria-labelledby="setupPlayersHeading">
+                <div class="section-heading">
+                    <span class="section-index" aria-hidden="true">1</span>
+                    <h3 id="setupPlayersHeading">玩家與 Buy-in</h3>
+                </div>
+                <div class="setup-form-grid">
+                    <div class="field">
+                        <label for="playerName">玩家名稱</label>
+                        <input type="text" id="playerName" placeholder="輸入名稱" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="playerBuyin">Buy-in 金額</label>
+                        <input type="number" id="playerBuyin" placeholder="Buy-in 金額" value="5000" min="1" step="1" inputmode="numeric" oninput="onSetupAmountInput()">
+                    </div>
+                    <button class="btn setup-add-button" onclick="addPlayerSetup()">加入玩家</button>
+                </div>
+                <div id="setupPlayerList" class="setup-player-list" aria-live="polite"></div>
+            </section>
 
-        <div class="card">
-            <h3>二、籌碼分配方案</h3>
-            <div class="input-group">
-                <label>小盲注 (Small Blind):</label>
-                <input type="number" id="smallBlind" value="50" style="width:100px">
-                <label>大盲注 (Big Blind):</label>
-                <input type="number" id="bigBlind" value="100" style="width:100px">
-                <button class="btn" onclick="autoAllocateChips()">一鍵自動分配 (可重複點擊)</button>
-            </div>
-            <p>總籌碼目標：<span id="totalChipsTarget">0</span> | 已分配：<span id="allocatedChips">0</span></p>
-            
-            <!-- 第一點修復：籌碼分兩行排開 -->
-            <div class="chip-row" id="chipAllocation">
-                <!-- 由 JS 生成籌碼輸入框 -->
-            </div>
-            
-            <div id="balanceDisplay" class="balance-display">結餘：0</div>
-            <div style="text-align:center;">
-                <button class="btn-main" id="btnOpenGame" onclick="startGame()" style="display:none; margin-top:20px;">開始牌局</button>
-            </div>
+            <section class="card setup-allocation" aria-labelledby="setupAllocationHeading">
+                <div class="section-heading">
+                    <span class="section-index" aria-hidden="true">2</span>
+                    <h3 id="setupAllocationHeading">籌碼分配</h3>
+                </div>
+                <div class="blind-controls">
+                    <div class="field">
+                        <label for="smallBlind">小盲注 (Small Blind)</label>
+                        <input type="number" id="smallBlind" value="50" min="1" step="1" inputmode="numeric" oninput="onSetupAmountInput()">
+                    </div>
+                    <div class="field">
+                        <label for="bigBlind">大盲注 (Big Blind)</label>
+                        <input type="number" id="bigBlind" value="100" min="1" step="1" inputmode="numeric" oninput="onSetupAmountInput()">
+                    </div>
+                    <button class="btn allocate-button" onclick="autoAllocateChips()">自動分配</button>
+                </div>
+                <div class="allocation-summary" aria-label="籌碼配置摘要">
+                    <div class="allocation-stat">
+                        <span class="allocation-stat-label">籌碼目標</span>
+                        <strong class="allocation-stat-value" id="totalChipsTarget">0</strong>
+                    </div>
+                    <div class="allocation-stat">
+                        <span class="allocation-stat-label">已分配</span>
+                        <strong class="allocation-stat-value" id="allocatedChips">0</strong>
+                    </div>
+                </div>
+                <div class="chip-row" id="chipAllocation"></div>
+                <div id="balanceDisplay" class="balance-display" aria-live="polite">結餘：0</div>
+                <div class="setup-primary-action">
+                    <button class="btn-main" id="btnOpenGame" onclick="startGame()" style="display:none;">開始牌局</button>
+                </div>
+            </section>
         </div>
     </div>
 
     <!-- 遊戲中 (In The Game) -->
-    <div id="page-game" class="page" style="position: relative;">
-        <button class="btn-add-player" onclick="openAddPlayerModal()">+ 加入玩家</button>
-        <h2>牌局進行中</h2>
-        <!-- v7 E3/E4：全場總籌碼（對帳用）+ 未結清借貸摘要 -->
-        <div id="gameTotals" class="card" style="text-align:center;">
-            <div>全場總籌碼：<strong id="totalChipDisplay">0</strong></div>
-            <div id="outstandingDebtsDisplay" style="margin-top:6px; color:#f39c12; font-size:0.95em;"></div>
-        </div>
-        <!-- 第二點修復：橫放 Poker Table (手機友好) -->
-        <div class="poker-table-container">
-            <div class="poker-table" id="pokerTable">
-                <!-- 玩家位置由 JS 生成 -->
+    <div id="page-game" class="page">
+        <div class="game-shell">
+            <div class="game-heading">
+                <h2>牌局進行中</h2>
+                <span class="game-heading-note">即時籌碼記帳</span>
             </div>
-        </div>
-        <div class="controls">
-            <h3>動態記帳</h3>
-            
-            <div class="card">
-                <h4>公共區取籌 / 歸還</h4>
-                <select id="publicPlayerSelect" onchange="updatePublicReturnButton()" style="min-width: 150px;"></select>
-                <div style="margin-top: 10px;">
-                    <button class="btn" onclick="updatePublicBorrow(1)">從公共區取籌 (+1)</button>
-                    <button class="btn" id="btnPublicReturn" onclick="updatePublicBorrow(-1)">歸還公共區 (-1)</button>
+            <div id="gameTotals" class="game-summary">
+                <div class="game-summary-item">
+                    <span class="game-summary-label">全場總籌碼</span>
+                    <strong class="game-summary-value" id="totalChipDisplay">0</strong>
+                </div>
+                <div class="game-summary-item">
+                    <span class="game-summary-label">未結清借貸</span>
+                    <div id="outstandingDebtsDisplay" aria-live="polite"></div>
                 </div>
             </div>
-
-            <!-- 第二點修復：玩家選單放在公共區下方，四項置中對齊 -->
-            <div class="card">
-                <h4>玩家間借籌</h4>
-                <div class="borrow-controls">
-                    <div>
-                        <label>借出者 -1</label><br>
-                        <select id="lenderSelect" onchange="updateBorrowerSelect()"></select>
-                    </div>
-                    <div>
-                        <label>借入者 +1</label><br>
-                        <select id="borrowerSelect"></select>
-                    </div>
+            <div class="poker-table-container">
+                <div class="poker-table" id="pokerTable"></div>
+                <div class="table-center-overlay">
+                    <span class="table-wordmark" aria-hidden="true">POKER</span>
+                    <button class="btn-add-player" onclick="openAddPlayerModal()">加入玩家</button>
                 </div>
-                <button class="btn" onclick="recordPlayerBorrow()">記錄借籌</button>
             </div>
-
-            <div class="card">
-                <h4>帳目記錄（最新一筆可刪除；玩家借貸可還款結清）</h4>
-                <div id="transactionLog" class="transaction-log"></div>
+            <div class="controls">
+                <div class="game-actions-grid">
+                    <section class="card operation-card" aria-labelledby="publicBorrowHeading">
+                        <h3 id="publicBorrowHeading">公共區取籌 / 歸還</h3>
+                        <div class="operation-field">
+                            <label for="publicPlayerSelect">玩家</label>
+                            <select id="publicPlayerSelect" onchange="updatePublicReturnButton()"></select>
+                        </div>
+                        <div class="operation-actions">
+                            <button class="btn" onclick="updatePublicBorrow(1)">從公共區取籌 (+1)</button>
+                            <button class="btn" id="btnPublicReturn" onclick="updatePublicBorrow(-1)">歸還公共區 (-1)</button>
+                        </div>
+                    </section>
+                    <section class="card operation-card" aria-labelledby="playerBorrowHeading">
+                        <h3 id="playerBorrowHeading">玩家間借籌</h3>
+                        <div class="player-borrow-fields">
+                            <div class="operation-field">
+                                <label for="lenderSelect">借出者 -1</label>
+                                <select id="lenderSelect" onchange="updateBorrowerSelect()"></select>
+                            </div>
+                            <div class="operation-field">
+                                <label for="borrowerSelect">借入者 +1</label>
+                                <select id="borrowerSelect"></select>
+                            </div>
+                        </div>
+                        <div class="operation-actions">
+                            <button class="btn" onclick="recordPlayerBorrow()">記錄借籌</button>
+                        </div>
+                    </section>
+                </div>
+                <section class="card transaction-section" aria-labelledby="transactionHeading">
+                    <div class="transaction-heading">
+                        <h3 id="transactionHeading">帳目記錄</h3>
+                        <span>最新一筆可刪除，未結清借貸可還款</span>
+                    </div>
+                    <div id="transactionLog" class="transaction-log" aria-live="polite"></div>
+                </section>
+                <div class="game-footer-actions">
+                    <button class="btn btn-warning" onclick="undo()">↶ 復原上一步</button>
+                    <button class="btn btn-danger" onclick="navTo('page-endgame'); showToast('進入結算', 1500)">結束牌局</button>
+                </div>
             </div>
-
-            <button class="btn btn-warning" onclick="undo()">↶ 復原上一步</button>
-            <button class="btn btn-danger" onclick="navTo('page-endgame'); showToast('進入結算核算', 1500)">結束牌局</button>
         </div>
     </div>
 
     <!-- 結算前確認 (End Game) -->
     <div id="page-endgame" class="page">
-        <h2>結算核算</h2>
-        <div class="card">
-            <p style="color: #f1c40f; margin-bottom: 15px;">請輸入每位玩家「手上現存的籌碼總數」</p>
-            <!-- 第三點修復：手機友好表格 -->
-            <table class="mobile-table" id="endgameTable">
+        <div class="settlement-shell">
+            <div class="settlement-heading">
+                <h2>結算</h2>
+                <span class="settlement-heading-note">核對全場籌碼</span>
+            </div>
+            <section class="card">
+                <p class="settlement-intro">輸入每位玩家手上現存的籌碼總數，並核對 Dealer's Tip。</p>
+                <div class="reconciliation-summary" aria-label="結算核對摘要">
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">總投入</span><strong class="reconciliation-stat-value" id="endgameSummaryInvested">0</strong></div>
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">玩家現存籌碼</span><strong class="reconciliation-stat-value" id="endgameSummaryChips">0</strong></div>
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">Dealer's Tip</span><strong class="reconciliation-stat-value" id="endgameSummaryTip">0</strong></div>
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">已核對合計</span><strong class="reconciliation-stat-value" id="endgameSummaryAccounted">0</strong></div>
+                    <div class="reconciliation-stat reconciliation-stat--difference" id="endgameDifferenceStat"><span class="reconciliation-stat-label">核對差額</span><strong class="reconciliation-stat-value" id="endgameSummaryDifference">0</strong></div>
+                </div>
+                <div class="settlement-table-wrap">
+                    <table class="mobile-table" id="endgameTable">
                 <thead>
                     <tr>
                         <th>玩家</th>
@@ -225,6 +810,11 @@
                 </thead>
                 <tbody></tbody>
                 <tfoot>
+                    <tr class="dealer-tip-row">
+                        <td><strong>Dealer's Tip</strong></td>
+                        <td colspan="4"><span class="dealer-tip-note">桌外支出，計入全場籌碼核對</span></td>
+                        <td><input class="settlement-number-input" type="number" id="dealerTipInput" value="0" min="0" step="1" inputmode="numeric" oninput="onDealerTipInput(this.value)" aria-label="Dealer's Tip"></td>
+                    </tr>
                     <tr class="total-row">
                         <td><strong>總計</strong></td>
                         <td id="total-buyin" colspan="2" style="text-align:center;"><strong>0</strong></td>
@@ -232,21 +822,36 @@
                         <td id="total-chips" style="text-align:center;"><strong>0</strong></td>
                     </tr>
                 </tfoot>
-            </table>
-            <div id="endgame-mismatch" style="color:#e74c3c; font-weight:bold; margin-top:10px; display:none;">總投入與手上籌碼總數不一致，請檢查！</div>
-            <div id="endgame-match" style="color:#2ecc71; font-weight:bold; margin-top:10px; display:none;">總數一致，可進行結算</div>
-            <button class="btn" id="runFinalCalcBtn" onclick="showFinalCalcModal()" style="display:none;">執行結算</button>
+                    </table>
+                </div>
+                <div id="endgame-mismatch" class="reconciliation-state reconciliation-state--error">總投入與手上籌碼總數不一致，請檢查！</div>
+                <div id="endgame-match" class="reconciliation-state reconciliation-state--success">總數一致，可進行結算</div>
+                <div class="settlement-actions">
+                    <button class="btn" onclick="navTo('page-game'); showToast('返回牌局', 1500)">返回牌局</button>
+                    <button class="btn" id="runFinalCalcBtn" onclick="showFinalCalcModal()" style="display:none;">執行結算</button>
+                </div>
+            </section>
+            <div class="footer">Creator: Gino</div>
         </div>
-        <button class="btn" onclick="navTo('page-game'); showToast('返回牌局', 1500)">返回遊戲</button>
-        <div class="footer">Creator: Gino</div>
     </div>
 
     <!-- 最終結算 (Settlement) -->
     <div id="page-settlement" class="page">
-        <h2>最終結算</h2>
-        <div class="card">
-            <div id="settlementResult"></div>
-            <table class="mobile-table" id="settlementTable">
+        <div class="settlement-shell">
+            <div class="settlement-heading">
+                <h2>最終結算</h2>
+                <span class="settlement-heading-note">已歸檔牌局</span>
+            </div>
+            <section class="card">
+                <div id="settlementResult" class="settlement-result"></div>
+                <div class="reconciliation-summary reconciliation-summary--final" aria-label="最終結算摘要">
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">總投入</span><strong class="reconciliation-stat-value" id="settlementSummaryInvested">0</strong></div>
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">玩家現存籌碼</span><strong class="reconciliation-stat-value" id="settlementSummaryChips">0</strong></div>
+                    <div class="reconciliation-stat"><span class="reconciliation-stat-label">Dealer's Tip</span><strong class="reconciliation-stat-value" id="settlementSummaryTip">0</strong></div>
+                    <div class="reconciliation-stat reconciliation-stat--difference" id="settlementDifferenceStat"><span class="reconciliation-stat-label">核對差額</span><strong class="reconciliation-stat-value" id="settlementSummaryDifference">0</strong></div>
+                </div>
+                <div class="settlement-table-wrap settlement-table-wrap--final">
+                    <table class="mobile-table" id="settlementTable">
                 <thead>
                     <tr>
                         <th>玩家</th>
@@ -256,40 +861,49 @@
                     </tr>
                 </thead>
                 <tbody></tbody>
-            </table>
-            <div id="validationMsg" style="margin-top:15px; font-weight:bold; font-size: 1.1em;"></div>
-            <div id="errorActions" style="display:none; margin-top:15px;">
-                <button class="btn btn-warning" onclick="navTo('page-endgame'); showToast('返回核算', 1500)">返回核算</button>
-            </div>
-            <div id="successActions" style="display:none; margin-top:15px;">
-                <button class="btn btn-success" onclick="exportReport()">一鍵複製報表</button>
-            </div>
+                    </table>
+                </div>
+                <div id="validationMsg" class="validation-message"></div>
+                <div class="settlement-actions">
+                    <button class="btn" onclick="resetToCover()">返回封面</button>
+                    <div class="settlement-actions-group">
+                        <div id="errorActions" style="display:none;"><button class="btn btn-warning" onclick="navTo('page-endgame'); showToast('返回結算', 1500)">返回結算</button></div>
+                        <div id="successActions" style="display:none;"><button class="btn btn-success" onclick="exportReport()">一鍵複製報表</button></div>
+                    </div>
+                </div>
+            </section>
+            <div class="footer">Creator: Gino</div>
         </div>
-        <button class="btn" onclick="resetToCover()">返回封面</button>
-        <div class="footer">Creator: Gino</div>
     </div>
 </div>
 
 <!-- T06：分級儲存提示 -->
-<div id="toast" class="toast"></div>
-<div id="privacyBanner">⚠️ 此環境無法自動存檔（隱私模式），請勿鎖屏，資料僅存於記憶體。<button onclick="document.getElementById('privacyBanner').style.display='none'">OK</button></div>
-<div id="recoveryBanner">⚠️ 讀取到舊版或損毀存檔，已備份並以全新狀態開啟。<button onclick="exportBackup()">匯出備份檔</button><button onclick="document.getElementById('recoveryBanner').style.display='none'">關閉</button></div>
-<div id="spectatorBanner">👁 此牌局已在另一個分頁開啟（唯讀模式），編輯請回到該分頁。</div>
+<div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+<div id="appBanners" class="app-banner-stack">
+    <div id="privacyBanner" role="alert"><div class="app-banner-content"><span>⚠️ 此環境無法自動存檔（隱私模式），請勿鎖屏，資料僅存於記憶體。</span><div class="app-banner-actions"><button onclick="hideBanner('privacyBanner')">OK</button></div></div></div>
+    <div id="recoveryBanner" role="alert"><div class="app-banner-content"><span>⚠️ 讀取到舊版或損毀存檔，已備份並以全新狀態開啟。</span><div class="app-banner-actions"><button onclick="exportBackup()">匯出備份檔</button><button onclick="hideBanner('recoveryBanner')">關閉</button></div></div></div>
+    <div id="spectatorBanner" role="status"><div class="app-banner-content"><span>👁 此牌局已在另一個分頁開啟（唯讀模式），編輯請回到該分頁。</span></div></div>
+</div>
 
 <!-- 確認視窗 -->
-<div id="confirmModal" class="modal">
-    <div class="modal-content">
-        <h3>確認結算數據</h3>
+<div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="modal-content confirm-modal-content" tabindex="-1">
+        <div class="confirm-modal-header">
+            <h3 id="confirmModalTitle">確認結算</h3>
+            <p>確認各玩家的投入、現存籌碼與預計盈虧。</p>
+        </div>
         <div id="confirmDetails"></div>
-        <button class="btn btn-success" onclick="confirmFinalCalc()">確認無誤</button>
-        <button class="btn btn-danger" onclick="closeModal()">返回修改</button>
+        <div class="confirm-modal-actions">
+            <button class="btn btn-danger" onclick="closeModal()">返回修改</button>
+            <button class="btn btn-success" onclick="confirmFinalCalc()">確認無誤</button>
+        </div>
     </div>
 </div>
 
 <!-- 中途加入玩家彈窗 -->
-<div id="addPlayerModal" class="modal">
-    <div class="modal-content">
-        <h3>中途加入玩家</h3>
+<div id="addPlayerModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="addPlayerModalTitle">
+    <div class="modal-content" tabindex="-1">
+        <h3 id="addPlayerModalTitle">中途加入玩家</h3>
         <div class="input-group">
             <input type="text" id="midGamePlayerName" placeholder="輸入玩家名稱">
         </div>
@@ -317,7 +931,7 @@
     }
 }(typeof self !== 'undefined' ? self : this, function () {
 
-    var SCHEMA_VERSION = 3;
+    var SCHEMA_VERSION = 4;
 
     var KEYS = {
         META: 'pokerchip:meta',
@@ -356,6 +970,7 @@
             smallBlind: 50,
             bigBlind: 100,
             buyin: 0,
+            dealerTip: 0,
             players: [],
             chipAllocation: {},
             transactions: []
@@ -369,6 +984,7 @@
         if (!obj.chipAllocation || typeof obj.chipAllocation !== 'object') return false;
         if (!Array.isArray(obj.transactions)) return false;
         if (typeof obj.buyin !== 'number') return false;
+        if (!isValidDealerTip(obj.dealerTip)) return false;
         if (typeof obj.smallBlind !== 'number' || typeof obj.bigBlind !== 'number') return false;
         if (typeof obj.phase !== 'string') return false;
         return true;
@@ -428,10 +1044,47 @@
         return Object.assign({}, obj, { schemaVersion: 3, players: players, transactions: transactions });
     }
 
+    // v3 -> v4：新增全局 Dealer's Tip；舊牌局預設為 0。
+    function migrateV3toV4(obj) {
+        var dealerTip = isValidDealerTip(obj.dealerTip) ? obj.dealerTip : 0;
+        return Object.assign({}, obj, { schemaVersion: 4, dealerTip: dealerTip });
+    }
+
+    function isValidDealerTip(value) {
+        return isValidChipInteger(value, true);
+    }
+
+    function isValidChipInteger(value, allowZero) {
+        return typeof value === 'number' && isFinite(value) && Number.isSafeInteger(value) && (allowZero ? value >= 0 : value > 0);
+    }
+
+    // 嚴格解析使用者輸入，不接受小數、科學記號、正負號或隱式截斷。
+    function parseChipIntegerInput(raw, options) {
+        options = options || {};
+        var text = String(raw == null ? '' : raw).trim();
+        if (text === '' && options.blankAsZero) return { valid: true, value: 0, reason: 'ok' };
+        if (!/^\d+$/.test(text)) return { valid: false, value: null, reason: text === '' ? 'empty' : 'format' };
+        var value = Number(text);
+        if (!Number.isSafeInteger(value)) return { valid: false, value: null, reason: 'range' };
+        if (options.allowZero === false && value === 0) return { valid: false, value: null, reason: 'zero' };
+        return { valid: true, value: value, reason: 'ok' };
+    }
+
+    function canArchiveCurrentGame(currentGame) {
+        if (!currentGame) return false;
+        var tip = currentGame.dealerTip == null ? 0 : currentGame.dealerTip;
+        if (!isValidDealerTip(tip)) return false;
+        if (!isValidChipInteger(currentGame.buyin, false) || !isValidChipInteger(currentGame.smallBlind, false) || !isValidChipInteger(currentGame.bigBlind, false)) return false;
+        return (currentGame.players || []).every(function (p) {
+            return p && isValidChipInteger(p.buyin, false) && isValidChipInteger(p.endingChips, true) && Number.isSafeInteger(p.profit);
+        });
+    }
+
     // 單步遷移 v -> v+1（loadCurrentGame 逐版迴圈呼叫，完整鏈屬 T02 擴充）
     function migrateStep(obj, fromVersion) {
         if (fromVersion === 1) return migrateV1toV2(obj);
         if (fromVersion === 2) return migrateV2toV3(obj);
+        if (fromVersion === 3) return migrateV3toV4(obj);
         return obj;
     }
 
@@ -803,10 +1456,31 @@
         };
     }
 
+    // 結算報表：玩家盈虧由高至低排序，不修改原 players 陣列。
+    function buildSettlementReport(players, dealerTip) {
+        var ranked = (players || []).map(function (p, index) {
+            var profit = Number(p && p.profit);
+            return { name: String((p && p.name) || ''), profit: isFinite(profit) ? profit : 0, index: index };
+        }).sort(function (a, b) {
+            return (b.profit - a.profit) || (a.index - b.index);
+        });
+        var maxProfit = ranked.length > 0 ? ranked[0].profit : 0;
+        var tip = isValidDealerTip(dealerTip) ? dealerTip : 0;
+        var lines = ['撲克結算報表', '================'];
+        ranked.forEach(function (p) {
+            var result = p.profit > 0 ? '贏' : p.profit < 0 ? '輸' : '平';
+            var winner = maxProfit > 0 && p.profit === maxProfit ? '  (最大贏家)' : '';
+            lines.push(p.name + ': ' + result + ': ' + p.profit + winner);
+        });
+        lines.push('', "Dealer's Tip: " + tip);
+        return lines.join('\n');
+    }
+
     // ===== T09：結算歸檔 → history（衍生快照 + 冪等去重 + FIFO）=====
     // 從 currentGame 衍生歷史紀錄（含每人 totalInvested/endingChips/profit 與總計）
     function buildHistoryEntry(currentGame) {
         var ps = (currentGame && currentGame.players) ? currentGame.players : [];
+        var dealerTip = isValidDealerTip(currentGame && currentGame.dealerTip) ? currentGame.dealerTip : 0;
         var players = ps.map(function (p) {
             var publicCost = p.publicBorrowCount * p.buyin;
             var borrowInCost = p.borrowInCount * p.buyin;
@@ -817,18 +1491,21 @@
                 totalInvested: totalInvested, endingChips: p.endingChips, profit: p.profit
             };
         });
-        var totals = { totalInvested: 0, totalChips: 0, totalProfit: 0 };
+        var totals = { totalInvested: 0, totalChips: 0, dealerTip: dealerTip, accountedChips: 0, totalProfit: 0, reconciledProfit: 0 };
         players.forEach(function (p) {
             totals.totalInvested += p.totalInvested;
             totals.totalChips += p.endingChips;
             totals.totalProfit += p.profit;
         });
+        totals.accountedChips = totals.totalChips + dealerTip;
+        totals.reconciledProfit = totals.totalProfit + dealerTip;
         return {
             gameId: currentGame.gameId,
             date: now(),
             buyin: currentGame.buyin,
             smallBlind: currentGame.smallBlind,
             bigBlind: currentGame.bigBlind,
+            dealerTip: dealerTip,
             players: players,
             totals: totals,
             settledAt: now()
@@ -838,6 +1515,7 @@
     // 歸檔：同 gameId 已存在則覆蓋（冪等去重），否則 FIFO append（受 cap 限制）
     // 回傳 { history, appended, dropped, dedup }
     function archiveCurrentGame(adapter, currentGame, cap) {
+        if (!canArchiveCurrentGame(currentGame)) throw new Error('Settlement amounts must be integers before archive');
         var entry = buildHistoryEntry(currentGame);
         var hist = loadHistory(adapter);
         var existing = -1;
@@ -908,6 +1586,10 @@
         createDefaultMeta: createDefaultMeta,
         createDefaultCurrentGame: createDefaultCurrentGame,
         validateCurrentGame: validateCurrentGame,
+        isValidDealerTip: isValidDealerTip,
+        isValidChipInteger: isValidChipInteger,
+        parseChipIntegerInput: parseChipIntegerInput,
+        canArchiveCurrentGame: canArchiveCurrentGame,
         migrateStep: migrateStep,
         loadCurrentGame: loadCurrentGame,
         saveCurrentGame: saveCurrentGame,
@@ -934,6 +1616,7 @@
         loadUndoStack: loadUndoStack, saveUndoStack: saveUndoStack, pushUndo: pushUndo,
         byteSize: byteSize, isQuotaError: isQuotaError, saveWithEviction: saveWithEviction,
         makeEvictor: makeEvictor,
+        buildSettlementReport: buildSettlementReport,
         // T09
         buildHistoryEntry: buildHistoryEntry, archiveCurrentGame: archiveCurrentGame,
         // T02
@@ -945,18 +1628,86 @@
 }));
 </script>
 <script>
+    let activeModal = null;
+    let modalReturnFocus = null;
+    let modalScrollY = 0;
+
+    function modalFocusableElements(modal) {
+        return Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+            .filter(el => el.offsetParent !== null);
+    }
+
+    function openDialog(modal, preferredFocus) {
+        if (!modal) return;
+        modalReturnFocus = document.activeElement;
+        modalScrollY = window.scrollY;
+        document.body.style.position = 'fixed';
+        document.body.style.top = '-' + modalScrollY + 'px';
+        document.body.style.width = '100%';
+        document.body.classList.add('modal-open');
+        modal.classList.add('is-open');
+        activeModal = modal;
+        requestAnimationFrame(() => {
+            if (activeModal !== modal) return;
+            const focusTarget = preferredFocus || modalFocusableElements(modal)[0] || modal.querySelector('.modal-content');
+            if (focusTarget) focusTarget.focus({ preventScroll: true });
+        });
+    }
+
+    function closeDialog(modal) {
+        if (!modal) return;
+        modal.classList.remove('is-open');
+        activeModal = null;
+        document.body.classList.remove('modal-open');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, modalScrollY);
+        if (modalReturnFocus && modalReturnFocus.isConnected && !modalReturnFocus.disabled) {
+            modalReturnFocus.focus({ preventScroll: true });
+        }
+        modalReturnFocus = null;
+    }
+
+    document.addEventListener('keydown', event => {
+        if (!activeModal) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            if (activeModal.id === 'confirmModal') closeModal();
+            else closeAddPlayerModal();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = modalFocusableElements(activeModal);
+        if (focusable.length === 0) {
+            event.preventDefault();
+            activeModal.querySelector('.modal-content').focus();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+
     // 中途加入玩家
     function openAddPlayerModal() {
         if (currentBuyin === 0 && players.length > 0) {
             currentBuyin = players[0].buyin;
         }
         document.getElementById('midGameBuyinDisplay').textContent = currentBuyin;
-        document.getElementById('midGamePlayerName').value = '';
-        document.getElementById('addPlayerModal').style.display = 'block';
+        const nameInput = document.getElementById('midGamePlayerName');
+        nameInput.value = '';
+        openDialog(document.getElementById('addPlayerModal'), nameInput);
     }
 
     function closeAddPlayerModal() {
-        document.getElementById('addPlayerModal').style.display = 'none';
+        closeDialog(document.getElementById('addPlayerModal'));
     }
 
     function addMidGamePlayer() {
@@ -978,6 +1729,7 @@
     const chipDenoms = [1000, 500, 100, 50, 20, 10, 5];
     let chipCounts = {};
     let currentBuyin = 0;
+    let dealerTip = 0;
 
     // ===== T01：Storage adapter + 持久化/還原 =====
     const storageAdapter = {
@@ -999,15 +1751,18 @@
     }
 
     function buildCurrentGame() {
+        const smallBlindState = readPositiveChipField('smallBlind');
+        const bigBlindState = readPositiveChipField('bigBlind');
         return {
             schemaVersion: PokerChipState.SCHEMA_VERSION,
             gameId: currentGameId || (currentGameId = PokerChipState.genId()),
             phase: activePhase(),
             createdAt: gameCreatedAt || (gameCreatedAt = PokerChipState.now()),
             updatedAt: PokerChipState.now(),
-            smallBlind: parseFloat(document.getElementById('smallBlind').value) || 0,
-            bigBlind: parseFloat(document.getElementById('bigBlind').value) || 0,
+            smallBlind: smallBlindState.valid ? smallBlindState.value : 0,
+            bigBlind: bigBlindState.valid ? bigBlindState.value : 0,
             buyin: currentBuyin,
+            dealerTip: dealerTip,
             players: players.map(p => ({ ...p })),
             chipAllocation: { ...chipCounts },
             transactions: transactions.map(t => ({ ...t }))
@@ -1038,7 +1793,27 @@
     }
     function showPrivacyBanner() {
         const b = document.getElementById('privacyBanner');
-        if (b) b.style.display = 'block';
+        if (b) {
+            b.style.display = 'block';
+            updateBannerOffset();
+        }
+    }
+
+    function hideBanner(id) {
+        const banner = document.getElementById(id);
+        if (banner) banner.style.display = 'none';
+        updateBannerOffset();
+    }
+
+    function updateBannerOffset() {
+        const stack = document.getElementById('appBanners');
+        if (!stack) return;
+        const visible = Array.from(stack.children).some(banner => getComputedStyle(banner).display !== 'none');
+        stack.classList.toggle('has-visible-banner', visible);
+        requestAnimationFrame(() => {
+            const height = visible ? stack.getBoundingClientRect().height : 0;
+            document.documentElement.style.setProperty('--app-banner-offset', height + 'px');
+        });
     }
     function showStorageHardFail() {
         // 阻塞提示：完整「匯出/清理」UI 屬階段四 Export/Import 與階段三歷史頁，先以提示為主
@@ -1050,7 +1825,10 @@
     function showRecoveryBanner(backupKey) {
         lastBackupKey = backupKey;
         const b = document.getElementById('recoveryBanner');
-        if (b) b.style.display = 'block';
+        if (b) {
+            b.style.display = 'block';
+            updateBannerOffset();
+        }
     }
     function exportBackup() {
         if (!lastBackupKey) return;
@@ -1136,6 +1914,7 @@
             chipDenoms.forEach(d => chipCounts[d] = 0);
             Object.keys(state.chipAllocation || {}).forEach(k => { chipCounts[Number(k)] = state.chipAllocation[k]; });
             currentBuyin = state.buyin || (players[0] ? players[0].buyin : 0);
+            dealerTip = PokerChipState.isValidDealerTip(state.dealerTip) ? state.dealerTip : 0;
 
             const sb = document.getElementById('smallBlind'); if (sb) sb.value = state.smallBlind;
             const bb = document.getElementById('bigBlind'); if (bb) bb.value = state.bigBlind;
@@ -1158,15 +1937,62 @@
     }
 
     // settlement 頁還原：直接從已存的 endingChips/profit 重渲染（不依賴 endgame 輸入框）
+    function appendDealerTipSettlementRow(tbody) {
+        const tr = document.createElement('tr');
+        tr.className = 'dealer-tip-summary-row';
+        tr.innerHTML = '<td>Dealer\'s Tip</td><td>—</td><td>' + dealerTip + '</td><td class="profit-positive">+' + dealerTip + '</td>';
+        tbody.appendChild(tr);
+    }
+
+    function setSummaryValue(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    }
+
+    function updateFinalSettlementSummary(totalProfit) {
+        const totals = settlementTotals();
+        const difference = Math.round(totals.totalInvested - totals.totalChips - dealerTip);
+        setSummaryValue('settlementSummaryInvested', Math.round(totals.totalInvested));
+        setSummaryValue('settlementSummaryChips', Math.round(totals.totalChips));
+        setSummaryValue('settlementSummaryTip', dealerTip);
+        setSummaryValue('settlementSummaryDifference', difference);
+        const differenceStat = document.getElementById('settlementDifferenceStat');
+        if (differenceStat) {
+            differenceStat.classList.toggle('is-balanced', difference === 0);
+            differenceStat.classList.toggle('is-invalid', difference !== 0);
+        }
+        return totalProfit + dealerTip;
+    }
+
+    function renderSettlementValidation(totalProfit) {
+        const reconciledProfit = updateFinalSettlementSummary(totalProfit);
+        const msg = document.getElementById('validationMsg');
+        const resultDiv = document.getElementById('settlementResult');
+        const errorActions = document.getElementById('errorActions');
+        const successActions = document.getElementById('successActions');
+        if (Math.abs(reconciledProfit) > 1) {
+            msg.innerText = '⚠️ 核對失敗：玩家盈虧 ' + totalProfit + ' + Dealer\'s Tip ' + dealerTip + ' = ' + reconciledProfit;
+            msg.className = 'validation-message is-error';
+            resultDiv.className = 'settlement-result is-error';
+            resultDiv.innerHTML = '<h3>數據核對失敗</h3><p>請檢查玩家籌碼或 Dealer\'s Tip。</p>';
+            errorActions.style.display = 'block';
+            successActions.style.display = 'none';
+        } else {
+            msg.innerText = '✓ 核對正確：玩家盈虧 ' + totalProfit + ' + Dealer\'s Tip ' + dealerTip + ' = 0';
+            msg.className = 'validation-message is-success';
+            resultDiv.className = 'settlement-result is-success';
+            resultDiv.innerHTML = '<h3>數據核對成功</h3><p>玩家籌碼與 Dealer\'s Tip 已完整核對。</p>';
+            errorActions.style.display = 'none';
+            successActions.style.display = 'block';
+        }
+    }
+
     function renderSettlementFromState() {
         const tbody = document.querySelector('#settlementTable tbody');
         tbody.innerHTML = '';
         let totalProfit = 0;
         players.forEach(p => {
-            const publicCost = p.publicBorrowCount * p.buyin;
-            const borrowInCost = p.borrowInCount * p.buyin;
-            const borrowOutCredit = p.borrowOutCount * p.buyin;
-            const totalInvested = p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            const totalInvested = playerTotalInvested(p);
             const profitClass = p.profit >= 0 ? 'profit-positive' : 'profit-negative';
             const profitSign = p.profit >= 0 ? '+' : '';
             const tr = document.createElement('tr');
@@ -1174,21 +2000,8 @@
             tbody.appendChild(tr);
             totalProfit += p.profit;
         });
-        const msg = document.getElementById('validationMsg');
-        const resultDiv = document.getElementById('settlementResult');
-        const errorActions = document.getElementById('errorActions');
-        const successActions = document.getElementById('successActions');
-        if (Math.abs(totalProfit) > 1) {
-            msg.innerText = '⚠️ 錯誤警告：損益總和不为 0 (目前為 ' + totalProfit + ')，請檢查輸入！';
-            msg.style.color = '#e74c3c';
-            resultDiv.innerHTML = '<h3 style="color:#e74c3c">⚠️ 數據核對失敗</h3><p>請檢查是否有籌碼遺失或輸入錯誤。</p>';
-            errorActions.style.display = 'block'; successActions.style.display = 'none';
-        } else {
-            msg.innerText = '✓ 核對總額：正確 (損益總和 = 0)';
-            msg.style.color = '#2ecc71';
-            resultDiv.innerHTML = '<h3 style="color:#2ecc71">✓ 數據核對成功</h3><p>所有玩家債務與盈虧已結清。</p>';
-            errorActions.style.display = 'none'; successActions.style.display = 'block';
-        }
+        appendDealerTipSettlementRow(tbody);
+        renderSettlementValidation(totalProfit);
     }
     // ===== /T01 =====
 
@@ -1202,7 +2015,7 @@
             div.className = 'chip-box';
             div.innerHTML = `
                 <div class="chip-label">${denom}</div>
-                <input type="number" id="chip-input-${denom}" value="0" min="0" onchange="updateChipCount(${denom}, this.value)" style="width:70px; text-align:center; font-size:1.1em;">
+                <input type="number" id="chip-input-${denom}" value="0" min="0" step="1" inputmode="numeric" oninput="updateChipCount(${denom}, this.value)" style="width:70px; text-align:center; font-size:1.1em;">
             `;
             container.appendChild(div);
         });
@@ -1221,19 +2034,58 @@
     // setup 階段內的 undo 不受影響（add-player/auto-allocate 仍可於 setup 內復原）。
     // 「返回遊戲」（endgame→game）維持 navTo，不清（進行中牌局歷史要保留）。
     function startGame() {
+        if (!checkBalance()) {
+            showToast('請先修正所有金額並完成籌碼配平');
+            return;
+        }
         try { storageAdapter.removeItem(PokerChipState.KEYS.UNDO_STACK); } catch (e) {}
         navTo('page-game');
     }
 
+    function readPositiveChipField(id) {
+        const input = document.getElementById(id);
+        const parsed = PokerChipState.parseChipIntegerInput(input ? input.value : '', { allowZero: false });
+        if (input) input.setAttribute('aria-invalid', parsed.valid ? 'false' : 'true');
+        return parsed;
+    }
+
+    function updateSetupBuyinControl() {
+        const input = document.getElementById('playerBuyin');
+        if (!input) return;
+        const hasValidFixedBuyin = players.length > 0 && PokerChipState.isValidChipInteger(currentBuyin, false);
+        input.readOnly = hasValidFixedBuyin;
+        input.setAttribute('aria-readonly', hasValidFixedBuyin ? 'true' : 'false');
+        if (hasValidFixedBuyin) input.value = currentBuyin;
+    }
+
+    function onSetupAmountInput() {
+        const buyinState = readPositiveChipField('playerBuyin');
+        readPositiveChipField('smallBlind');
+        readPositiveChipField('bigBlind');
+        if (players.length > 0 && !PokerChipState.isValidChipInteger(currentBuyin, false) && buyinState.valid) {
+            currentBuyin = buyinState.value;
+            players.forEach(p => { p.buyin = currentBuyin; });
+            updateTotalChipsTarget();
+            updateSetupBuyinControl();
+            saver.milestone();
+        } else {
+            checkBalance();
+            saver.schedule();
+        }
+    }
+
     function addPlayerSetup() {
         const name = document.getElementById('playerName').value.trim();
-        const buyin = parseFloat(document.getElementById('playerBuyin').value) || 0;
         if(!name) return showToast('請輸入玩家名稱');
         if(PokerChipState.hasDuplicateName(players, name)) return showToast('玩家名稱已存在');
+        const buyinState = readPositiveChipField('playerBuyin');
+        if (players.length === 0 && !buyinState.valid) return showToast('Buy-in 必須是大於 0 的整數');
+        const buyin = players.length > 0 ? currentBuyin : buyinState.value;
+        if (!PokerChipState.isValidChipInteger(buyin, false)) return showToast('Buy-in 必須是大於 0 的整數');
 
         pushUndoSnapshot('add-player-setup');
         players.push(PokerChipState.newPlayer(name, buyin));
-        currentBuyin = buyin;
+        if (players.length === 1) currentBuyin = buyin;
         updateTotalChipsTarget();
         document.getElementById('playerName').value = '';
         renderSetupList();
@@ -1243,7 +2095,19 @@
 
     function renderSetupList() {
         const div = document.getElementById('setupPlayerList');
-        div.innerHTML = players.map((p, i) => `<div>${i+1}. ${escapeHtml(p.name)} (${p.buyin}) <button class="btn btn-danger" onclick="removePlayerSetup(${i})" style="padding:2px 8px;">刪除</button></div>`).join('');
+        updateSetupBuyinControl();
+        if (players.length === 0) {
+            div.innerHTML = '<div class="setup-empty">尚未加入玩家</div>';
+            return;
+        }
+        div.innerHTML = players.map((p, i) => `
+            <div class="setup-player-row">
+                <span class="setup-player-number">${i + 1}</span>
+                <span class="setup-player-name">${escapeHtml(p.name)}</span>
+                <span class="setup-player-buyin">${p.buyin}</span>
+                <button class="btn btn-danger setup-player-remove" onclick="removePlayerSetup(${i})" aria-label="刪除玩家 ${escapeHtml(p.name)}">刪除</button>
+            </div>
+        `).join('');
     }
 
     // D2.3：設定階段刪除玩家（牌局進行中不開放；設定階段無交易，故無借還紀錄檢查）
@@ -1252,6 +2116,7 @@
         if (!p) return;
         pushUndoSnapshot('remove-player-setup');
         players.splice(i, 1);
+        currentBuyin = players.length > 0 ? players[0].buyin : 0;
         updateTotalChipsTarget();
         renderSetupList();
         saver.milestone();
@@ -1304,14 +2169,28 @@
     }
 
     function updateChipCount(denom, value) {
-        chipCounts[denom] = parseInt(value) || 0;
+        const input = document.getElementById(`chip-input-${denom}`);
+        const parsed = PokerChipState.parseChipIntegerInput(value, { allowZero: true, blankAsZero: true });
+        if (input) input.setAttribute('aria-invalid', parsed.valid ? 'false' : 'true');
+        if (parsed.valid) {
+            chipCounts[denom] = parsed.value;
+            saver.schedule();
+        }
         checkBalance();
-        saver.schedule();
     }
 
     function checkBalance() {
         const target = players.reduce((sum, p) => sum + p.buyin, 0);
         const current = Object.keys(chipCounts).reduce((sum, d) => sum + (d * chipCounts[d]), 0);
+        const buyinValid = players.length === 0 ? readPositiveChipField('playerBuyin').valid : players.every(p => PokerChipState.isValidChipInteger(p.buyin, false));
+        const blindsValid = readPositiveChipField('smallBlind').valid && readPositiveChipField('bigBlind').valid;
+        const chipInputsValid = chipDenoms.every(denom => {
+            const input = document.getElementById(`chip-input-${denom}`);
+            if (!input) return true;
+            const parsed = PokerChipState.parseChipIntegerInput(input.value, { allowZero: true, blankAsZero: true });
+            input.setAttribute('aria-invalid', parsed.valid ? 'false' : 'true');
+            return parsed.valid;
+        });
         
         const balance = target - current;
         
@@ -1320,7 +2199,16 @@
         
         allocatedDisplay.innerText = current;
         
-        if(balance > 0) {
+        if (!buyinValid) {
+            display.innerText = 'Buy-in 必須是大於 0 的整數';
+            display.className = 'balance-display balance-error';
+        } else if (!blindsValid) {
+            display.innerText = '大小盲注必須是大於 0 的整數';
+            display.className = 'balance-display balance-error';
+        } else if (!chipInputsValid) {
+            display.innerText = '籌碼數量必須是非負整數';
+            display.className = 'balance-display balance-error';
+        } else if(balance > 0) {
             display.innerText = `結餘：${balance}（還需分配 ${balance}）`;
             display.className = 'balance-display balance-error';
         } else if(balance < 0) {
@@ -1331,11 +2219,13 @@
             display.className = 'balance-display balance-ok';
         }
         
-        if(balance === 0 && players.length > 0) {
+        const canOpen = balance === 0 && players.length > 0 && buyinValid && blindsValid && chipInputsValid;
+        if(canOpen) {
             document.getElementById('btnOpenGame').style.display = 'inline-block';
         } else {
             document.getElementById('btnOpenGame').style.display = 'none';
         }
+        return canOpen;
     }
 
     // 第二點修復 + T04：座位渲染與 select 渲染拆開（Bug D-1）
@@ -1467,10 +2357,11 @@
         const od = document.getElementById('outstandingDebtsDisplay');
         if (od) {
             const debts = PokerChipState.outstandingDebts(transactions);
+            od.classList.toggle('is-clear', debts.length === 0);
             if (debts.length === 0) {
-                od.textContent = '未結清借貸：無';
+                od.textContent = '無';
             } else {
-                od.innerHTML = '未結清借貸：' + debts.map(d => {
+                od.innerHTML = debts.map(d => {
                     const l = PokerChipState.findPlayerById(players, d.lenderId);
                     const b = PokerChipState.findPlayerById(players, d.borrowerId);
                     return escapeHtml((l ? l.name : '?') + ' 借給 ' + (b ? b.name : '?') + ' ×' + d.count);
@@ -1533,6 +2424,10 @@
         const log = document.getElementById('transactionLog');
         if (!log) return;
         log.innerHTML = '';
+        if (transactions.length === 0) {
+            log.innerHTML = '<div class="transaction-empty">尚無帳目記錄</div>';
+            return;
+        }
         // v8 net-aware：結清狀態（settled/netted/open）；E2：刪除僅限最新一筆；僅 open 顯示還款鈕
         const status = PokerChipState.settleStatus(transactions);
         const lastIndex = transactions.length - 1;
@@ -1541,34 +2436,46 @@
             const div = document.createElement('div');
             div.className = 'transaction-item';
             const isLatest = index === lastIndex;
-            let span = '';
+            let description = '';
+            let statusLabel = '';
+            let statusClass = '';
             let actions = '';
 
             if (t.type === 'public') {
                 const p = PokerChipState.findPlayerById(players, t.playerId);
                 const name = p ? p.name : '?';
-                span = `${t.time} - ${escapeHtml(name)} ${t.amount > 0 ? '公共取籌' : '歸還公共'} (${t.amount})`;
-                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
+                description = `${escapeHtml(name)} ${t.amount > 0 ? '從公共區取籌' : '歸還公共區'} (${t.amount > 0 ? '+' : ''}${t.amount})`;
+                statusLabel = '公共';
+                statusClass = 'public';
+                if (isLatest) actions += `<button class="btn btn-danger transaction-action" onclick="deleteTransaction(${index})">刪除</button>`;
             } else if (t.type === 'player') {
                 const l = PokerChipState.findPlayerById(players, t.lenderId);
                 const b = PokerChipState.findPlayerById(players, t.borrowerId);
                 // v8 net-aware：'open' 可結清（顯示還款鈕）；'settled' 已還款結清；'netted' 已跨方向抵銷。
                 const st = status[t.id];
-                const mark = st === 'settled' ? '（已結清）' : st === 'netted' ? '（已抵銷）' : '（未結清）';
-                span = `${t.time} - ${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')} ${mark}`;
+                statusLabel = st === 'settled' ? '已結清' : st === 'netted' ? '已抵銷' : '未結清';
+                statusClass = st === 'settled' ? 'settled' : st === 'netted' ? 'netted' : 'open';
+                description = `${escapeHtml(l ? l.name : '?')} 借給 ${escapeHtml(b ? b.name : '?')}`;
                 // 只有真正 open（淨額未結清）才顯示還款鈕；已結清/已抵銷一律不顯示（避免虛假還款動作）
                 if (st === 'open') {
-                    actions += ` <button class="btn btn-success" onclick="repayPlayerBorrow('${t.lenderId}','${t.borrowerId}')" style="padding:2px 8px;">還款</button>`;
+                    actions += `<button class="btn btn-success transaction-action" onclick="repayPlayerBorrow('${t.lenderId}','${t.borrowerId}')">還款</button>`;
                 }
-                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
+                if (isLatest) actions += `<button class="btn btn-danger transaction-action" onclick="deleteTransaction(${index})">刪除</button>`;
             } else if (t.type === 'player-repay') {
                 const l = PokerChipState.findPlayerById(players, t.lenderId);
                 const b = PokerChipState.findPlayerById(players, t.borrowerId);
-                span = `${t.time} - ${escapeHtml(b ? b.name : '?')} 還款給 ${escapeHtml(l ? l.name : '?')}`;
-                if (isLatest) actions += ` <button class="btn btn-danger" onclick="deleteTransaction(${index})" style="padding:2px 8px;">刪除</button>`;
+                description = `${escapeHtml(b ? b.name : '?')} 還款給 ${escapeHtml(l ? l.name : '?')}`;
+                statusLabel = '已還款';
+                statusClass = 'repaid';
+                if (isLatest) actions += `<button class="btn btn-danger transaction-action" onclick="deleteTransaction(${index})">刪除</button>`;
             }
 
-            div.innerHTML = `<span>${span}</span>${actions}`;
+            div.innerHTML = `
+                <span class="transaction-time">${escapeHtml(t.time || '')}</span>
+                <span class="transaction-description">${description}</span>
+                <span class="transaction-status transaction-status--${statusClass}">${statusLabel}</span>
+                <span class="transaction-actions">${actions}</span>
+            `;
             log.appendChild(div);
         });
     }
@@ -1602,71 +2509,184 @@
                 <td>${p.publicBorrowCount}</td>
                 <td>${p.borrowInCount}</td>
                 <td>${p.borrowOutCount}</td>
-                <td><input type="number" id="end-chips-${i}" value="${p.endingChips||0}" style="width:80px; text-align:center;" oninput="onEndChipInput(${i}, this.value)"></td>
+                <td><input class="settlement-number-input" type="number" id="end-chips-${i}" value="${p.endingChips||0}" min="0" step="1" inputmode="numeric" oninput="onEndChipInput(${i}, this.value)"></td>
             `;
             tbody.appendChild(tr);
         });
+        const tipInput = document.getElementById('dealerTipInput');
+        if (tipInput) tipInput.value = dealerTip;
         validateEndgameTotals();
     }
 
     function onEndChipInput(i, val) {
-        if (players[i]) players[i].endingChips = parseFloat(val) || 0;
+        const input = document.getElementById(`end-chips-${i}`);
+        const parsed = PokerChipState.parseChipIntegerInput(val, { allowZero: true });
+        if (input) input.setAttribute('aria-invalid', parsed.valid ? 'false' : 'true');
+        if (parsed.valid && players[i]) {
+            players[i].endingChips = parsed.value;
+            saver.milestone();
+        }
         validateEndgameTotals();
-        saver.milestone();      // 結算頁最終籌碼同步寫盤（維度 d 決策 A）：算錢那一刻絕對不掉
+    }
+
+    function playerTotalInvested(p) {
+        return p.buyin + p.publicBorrowCount * p.buyin + p.borrowInCount * p.buyin - p.borrowOutCount * p.buyin;
+    }
+
+    function settlementTotals() {
+        return players.reduce((totals, p) => {
+            const invested = playerTotalInvested(p);
+            totals.totalInvested += invested;
+            totals.totalChips += Number(p.endingChips) || 0;
+            totals.totalProfit += (Number(p.endingChips) || 0) - invested;
+            return totals;
+        }, { totalInvested: 0, totalChips: 0, totalProfit: 0 });
+    }
+
+    function readEndingChipInputs() {
+        let totalChips = 0;
+        const invalidPlayers = [];
+        players.forEach((p, i) => {
+            const input = document.getElementById(`end-chips-${i}`);
+            const parsed = PokerChipState.parseChipIntegerInput(input ? input.value : '', { allowZero: true });
+            if (input) input.setAttribute('aria-invalid', parsed.valid ? 'false' : 'true');
+            if (parsed.valid) totalChips += parsed.value;
+            else invalidPlayers.push(p.name || ('玩家 ' + (i + 1)));
+        });
+        return { valid: invalidPlayers.length === 0, totalChips, invalidPlayers };
+    }
+
+    function readDealerTipInput(totalInvested) {
+        const input = document.getElementById('dealerTipInput');
+        const raw = input ? input.value.trim() : String(dealerTip);
+        const parsed = PokerChipState.parseChipIntegerInput(raw, { allowZero: true, blankAsZero: true });
+        const value = parsed.valid ? parsed.value : null;
+        const validInteger = parsed.valid;
+        const valid = validInteger && value <= totalInvested;
+        if (input) {
+            input.max = Math.max(0, totalInvested);
+            input.setAttribute('aria-invalid', valid ? 'false' : 'true');
+        }
+        return { value, valid, validInteger };
+    }
+
+    function onDealerTipInput() {
+        const totals = settlementTotals();
+        const investedValid = PokerChipState.isValidChipInteger(totals.totalInvested, true);
+        const tipState = readDealerTipInput(investedValid ? totals.totalInvested : 0);
+        if (tipState.valid) {
+            dealerTip = tipState.value;
+            saver.milestone();
+        }
+        validateEndgameTotals();
     }
 
     function validateEndgameTotals() {
-        let totalBuyin = 0;
-        let totalChips = 0;
-        players.forEach((p, i) => {
-            const publicCost = p.publicBorrowCount * p.buyin;
-            const borrowInCost = p.borrowInCount * p.buyin;
-            const borrowOutCredit = p.borrowOutCount * p.buyin;
-            totalBuyin += p.buyin + publicCost + borrowInCost - borrowOutCredit;
-            totalChips += parseFloat(document.getElementById(`end-chips-${i}`).value) || 0;
-        });
-        totalBuyin = Math.round(totalBuyin);
-        totalChips = Math.round(totalChips);
+        const totals = settlementTotals();
+        const investedValid = PokerChipState.isValidChipInteger(totals.totalInvested, true);
+        const totalBuyin = investedValid ? totals.totalInvested : null;
+        const endingState = readEndingChipInputs();
+        const totalChips = endingState.valid ? endingState.totalChips : null;
+        const tipState = readDealerTipInput(investedValid ? totalBuyin : 0);
+        const accountedChips = investedValid && tipState.valid && endingState.valid ? totalChips + tipState.value : null;
+        const difference = accountedChips === null ? null : totalBuyin - accountedChips;
 
-        document.getElementById('total-buyin').innerHTML = '<strong>' + totalBuyin + '</strong>';
-        document.getElementById('total-chips').innerHTML = '<strong>' + totalChips + '</strong>';
+        document.getElementById('total-buyin').innerHTML = '<strong>' + (totalBuyin === null ? '—' : totalBuyin) + '</strong>';
+        document.getElementById('total-chips').innerHTML = '<strong>' + (accountedChips === null ? '—' : accountedChips) + '</strong>';
+        setSummaryValue('endgameSummaryInvested', totalBuyin === null ? '—' : totalBuyin);
+        setSummaryValue('endgameSummaryChips', totalChips === null ? '—' : totalChips);
+        setSummaryValue('endgameSummaryTip', tipState.validInteger ? tipState.value : '—');
+        setSummaryValue('endgameSummaryAccounted', accountedChips === null ? '—' : accountedChips);
+        setSummaryValue('endgameSummaryDifference', difference === null ? '—' : difference);
+        const differenceStat = document.getElementById('endgameDifferenceStat');
+        if (differenceStat) {
+            differenceStat.classList.toggle('is-balanced', difference === 0 && tipState.valid);
+            differenceStat.classList.toggle('is-invalid', !tipState.valid || difference !== 0);
+        }
 
-        const match = totalBuyin === totalChips && players.length > 0;
+        const match = investedValid && endingState.valid && tipState.valid && difference === 0 && players.length > 0;
+        const mismatch = document.getElementById('endgame-mismatch');
+        const matchMsg = document.getElementById('endgame-match');
         document.getElementById('runFinalCalcBtn').style.display = match ? 'inline-block' : 'none';
-        document.getElementById('endgame-mismatch').style.display = (!match && players.length > 0) ? 'block' : 'none';
-        document.getElementById('endgame-match').style.display = match ? 'block' : 'none';
+        mismatch.style.display = (!match && players.length > 0) ? 'block' : 'none';
+        matchMsg.style.display = match ? 'block' : 'none';
+        if (!investedValid) {
+            mismatch.textContent = '本局總投入包含非整數，請修正 Buy-in 後再結算。';
+        } else if (!endingState.valid) {
+            mismatch.textContent = endingState.invalidPlayers.join('、') + ' 的現存籌碼必須是非負整數。';
+        } else if (!tipState.validInteger) {
+            mismatch.textContent = 'Dealer\'s Tip 必須是非負整數。';
+        } else if (!tipState.valid) {
+            mismatch.textContent = 'Dealer\'s Tip 不可大於全場總投入。';
+        } else if (difference > 0) {
+            mismatch.textContent = '玩家現存籌碼加 Dealer\'s Tip 仍少 ' + difference + '，請檢查。';
+        } else if (difference < 0) {
+            mismatch.textContent = '玩家現存籌碼加 Dealer\'s Tip 超出 ' + Math.abs(difference) + '，請檢查。';
+        }
+        matchMsg.textContent = match ? '核對一致：玩家現存籌碼 + Dealer\'s Tip = 總投入' : '';
+        return match;
     }
 
     function showFinalCalcModal() {
+        if (!validateEndgameTotals()) {
+            showToast('請先修正所有結算金額');
+            return;
+        }
         const modal = document.getElementById('confirmModal');
         const details = document.getElementById('confirmDetails');
-        
-        let html = '<table style="width:100%"><tr><th>玩家</th><th>公共借</th><th>借入</th><th>借出</th><th>手上籌碼</th></tr>';
-        players.forEach((p, i) => {
-            const endChips = players[i].endingChips || 0;
+        let totalProfit = 0;
+
+        let html = '<div class="confirm-table-wrap"><table class="mobile-table confirm-settlement-table"><thead><tr><th>玩家</th><th>總投入成本</th><th>手上現存籌碼</th><th>預計盈虧</th></tr></thead><tbody>';
+        players.forEach(p => {
+            const endChips = p.endingChips || 0;
+            const totalInvested = playerTotalInvested(p);
+            const projectedProfit = endChips - totalInvested;
+            totalProfit += projectedProfit;
+            const profitClass = projectedProfit >= 0 ? 'confirm-profit-positive' : 'confirm-profit-negative';
+            const profitSign = projectedProfit >= 0 ? '+' : '';
             html += `<tr>
                 <td>${escapeHtml(p.name)}</td>
-                <td>${p.publicBorrowCount}</td>
-                <td>${p.borrowInCount}</td>
-                <td>${p.borrowOutCount}</td>
+                <td>${totalInvested}</td>
                 <td>${endChips}</td>
+                <td class="${profitClass}">${profitSign}${projectedProfit}</td>
             </tr>`;
         });
-        html += '</table><p style="margin-top:10px">確認以上數據無誤後，將計算最終盈虧</p>';
-        
+        const reconciledProfit = totalProfit + dealerTip;
+        html += `<tr class="dealer-tip-summary-row">
+            <td>Dealer's Tip</td>
+            <td>—</td>
+            <td>${dealerTip}</td>
+            <td class="confirm-profit-positive">+${dealerTip}</td>
+        </tr></tbody></table></div>
+        <div class="confirm-reconciliation">
+            <div class="confirm-reconciliation-item"><span>玩家盈虧總和</span><strong>${totalProfit}</strong></div>
+            <div class="confirm-reconciliation-item"><span>Dealer's Tip</span><strong>+${dealerTip}</strong></div>
+            <div class="confirm-reconciliation-item"><span>核對差額</span><strong>${reconciledProfit}</strong></div>
+        </div>`;
+
         details.innerHTML = html;
-        modal.style.display = 'block';
+        openDialog(modal, modal.querySelector('.btn-danger'));
     }
 
     function closeModal() {
-        document.getElementById('confirmModal').style.display = 'none';
+        closeDialog(document.getElementById('confirmModal'));
     }
 
     function confirmFinalCalc() {
+        if (!validateEndgameTotals()) {
+            closeModal();
+            showToast('結算金額已變更，請重新核對');
+            return;
+        }
         closeModal();
         calculateSettlement();
         // T09：先歸檔進 history（帶 gameId 冪等去重 + FIFO 上限 5），再進 settlement 階段
-        try { PokerChipState.archiveCurrentGame(storageAdapter, buildCurrentGame(), 5); } catch (e) {}
+        try {
+            PokerChipState.archiveCurrentGame(storageAdapter, buildCurrentGame(), 5);
+        } catch (e) {
+            showToast('結算資料包含無效金額，無法歸檔');
+            return;
+        }
         navTo('page-settlement');
         showToast('已結算並歸檔');
     }
@@ -1675,19 +2695,11 @@
         let totalProfit = 0;
         const tbody = document.querySelector('#settlementTable tbody');
         tbody.innerHTML = '';
-        const resultDiv = document.getElementById('settlementResult');
-        const errorActions = document.getElementById('errorActions');
-        const successActions = document.getElementById('successActions');
-        
+
         players.forEach((p, i) => {
             const endChips = players[i].endingChips || 0;
             p.endingChips = endChips;
-
-            const publicCost = p.publicBorrowCount * p.buyin;
-            const borrowInCost = p.borrowInCount * p.buyin;
-            const borrowOutCredit = p.borrowOutCount * p.buyin;
-            
-            const totalInvested = p.buyin + publicCost + borrowInCost - borrowOutCredit;
+            const totalInvested = playerTotalInvested(p);
             p.profit = endChips - totalInvested;
             totalProfit += p.profit;
 
@@ -1703,29 +2715,12 @@
             `;
             tbody.appendChild(tr);
         });
-
-        const msg = document.getElementById('validationMsg');
-        
-        if(Math.abs(totalProfit) > 1) {
-            msg.innerText = `⚠️ 錯誤警告：損益總和不为 0 (目前為 ${totalProfit})，請檢查輸入！`;
-            msg.style.color = '#e74c3c';
-            resultDiv.innerHTML = '<h3 style="color:#e74c3c">⚠️ 數據核對失敗</h3><p>請檢查是否有籌碼遺失或輸入錯誤。</p>';
-            errorActions.style.display = 'block';
-            successActions.style.display = 'none';
-        } else {
-            msg.innerText = '✓ 核對總額：正確 (損益總和 = 0)';
-            msg.style.color = '#2ecc71';
-            resultDiv.innerHTML = '<h3 style="color:#2ecc71">✓ 數據核對成功</h3><p>所有玩家債務與盈虧已結清。</p>';
-            errorActions.style.display = 'none';
-            successActions.style.display = 'block';
-        }
+        appendDealerTipSettlementRow(tbody);
+        renderSettlementValidation(totalProfit);
     }
 
     function exportReport() {
-        let report = "撲克結算報表\nCreator: Gino\n================\n";
-        players.forEach(p => {
-            report += `${p.name}: 盈虧 ${p.profit}\n`;
-        });
+        const report = PokerChipState.buildSettlementReport(players, dealerTip);
         navigator.clipboard.writeText(report).then(() => showToast("報表已複製"));
     }
 
@@ -1735,6 +2730,7 @@
             transactions = [];
             chipDenoms.forEach(d => chipCounts[d] = 0);
             currentBuyin = 0;
+            dealerTip = 0;
             currentGameId = null;
             gameCreatedAt = 0;
             try { storageAdapter.removeItem(PokerChipState.KEYS.UNDO_STACK); } catch (e) {} // T09：開新局清復原快照（history 保留）
@@ -1751,6 +2747,8 @@
             document.getElementById('validationMsg').innerText = '';
             document.getElementById('errorActions').style.display = 'none';
             document.getElementById('successActions').style.display = 'none';
+            const tipInput = document.getElementById('dealerTipInput');
+            if (tipInput) tipInput.value = '0';
             
             chipDenoms.forEach(denom => {
                 const input = document.getElementById(`chip-input-${denom}`);
@@ -1762,6 +2760,15 @@
     }
 
     initChipInputs();
+    renderSetupList();
+    ['playerName', 'playerBuyin'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                addPlayerSetup();
+            }
+        });
+    });
 
     // ===== T05：多分頁 heartbeat 活鎖 + spectator 唯讀 =====
     const TAB_ID = PokerChipState.genId();
@@ -1773,8 +2780,14 @@
             el.disabled = !enabled;
         });
     }
-    function showSpectatorBanner() { const b = document.getElementById('spectatorBanner'); if (b) b.style.display = 'block'; }
-    function hideSpectatorBanner() { const b = document.getElementById('spectatorBanner'); if (b) b.style.display = 'none'; }
+    function showSpectatorBanner() {
+        const b = document.getElementById('spectatorBanner');
+        if (b) {
+            b.style.display = 'block';
+            updateBannerOffset();
+        }
+    }
+    function hideSpectatorBanner() { hideBanner('spectatorBanner'); }
 
     function startActiveHeartbeat() {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
@@ -1789,6 +2802,7 @@
 
     function becomeSpectator() {
         isSpectator = true;
+        document.body.classList.add('is-spectator');
         showSpectatorBanner();
         enableApp(false);
         if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
@@ -1800,6 +2814,7 @@
                     const r = PokerChipState.tryAcquireLock(storageAdapter, TAB_ID, PokerChipState.now(), LOCK_TIMEOUT);
                     if (r.role === 'active') {
                         isSpectator = false;
+                        document.body.classList.remove('is-spectator');
                         hideSpectatorBanner();
                         enableApp(true);
                         startActiveHeartbeat();
@@ -1844,22 +2859,19 @@
     (function initOnLoad() {
         try {
             const r = PokerChipState.tryAcquireLock(storageAdapter, TAB_ID, PokerChipState.now(), LOCK_TIMEOUT);
-            if (r.role === 'active') { isSpectator = false; startActiveHeartbeat(); }
+            if (r.role === 'active') { isSpectator = false; document.body.classList.remove('is-spectator'); startActiveHeartbeat(); }
             else { becomeSpectator(); }
         } catch (e) {
             // 隱私模式：無法鎖，當作單一分頁（active 無鎖），不阻斷；privacyBanner 已由 persist 寫入失敗時提示
             isSpectator = false;
+            document.body.classList.remove('is-spectator');
         }
         loadAndRestore();
+        updateBannerOffset();
+        if (window.ResizeObserver) new ResizeObserver(updateBannerOffset).observe(document.getElementById('appBanners'));
+        window.addEventListener('resize', updateBannerOffset);
     })();
 </script>
 
 </body>
 </html>
-
-							<script>
-                            	
-							</script>
-                        </body>
-                        </html>
-                    
