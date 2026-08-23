@@ -104,7 +104,11 @@
         
         /* 手機適配 */
         @media (max-width: 600px) {
-            .poker-table-container { height: 350px; }
+            .poker-table-container { min-height: 350px; }
+            .poker-table { min-height: 350px; padding: 64px 28px; border-radius: 150px / 105px; }
+            .player-seat-grid { min-height: 0; }
+            .player-seat { width: 52px; height: 52px; font-size: 1rem; }
+            .player-detail-panel { width: min(280px, calc(100% - 24px)); padding: 12px; }
             .player-spot { min-width: 60px; padding: 4px 8px; font-size: 0.7em; }
             .chip-box { min-width: 80px; padding: 10px; }
             .chip-box input { width: 60px; }
@@ -324,12 +328,34 @@
         .validation-message.is-error { color: var(--color-danger); background: rgba(216, 93, 88, .09); border: 1px solid rgba(216, 93, 88, .34); }
 
         /* Poker visual previews: one implementation, presentation-only themes. */
+        .poker-table-container { height: auto; min-height: 450px; }
+        .poker-table { height: auto; min-height: 450px; padding: 72px 52px; border-radius: 180px / 120px; }
+        .player-seat-grid { position: absolute; inset: 0; pointer-events: none; }
+        .player-seat { position: absolute; left: var(--seat-left); top: var(--seat-top); display: grid; place-items: center; width: 58px; height: 58px; box-sizing: border-box; padding: 0; border: 3px solid #10231d; border-radius: 50%; background: rgba(115, 125, 121, .3); color: rgba(244, 247, 245, .92); font: inherit; font-size: 1.15rem; font-weight: 700; cursor: pointer; pointer-events: auto; transform: translate(-50%, -50%); transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 120ms ease; }
+        .player-seat:hover, .player-seat:focus-visible { background: rgba(150, 160, 156, .42); color: #fff; box-shadow: 0 0 0 3px rgba(8, 20, 16, .72), 0 8px 18px rgba(0, 0, 0, .28); outline: none; transform: translate(-50%, -50%) scale(1.04); }
+        .player-seat:active { background: #f4f7f5; border-color: #081811; color: #17342b; transform: translate(-50%, -50%) scale(.94); }
+        .player-seat.is-selected { background: rgba(244, 247, 245, .94); border-color: #081811; color: #17342b; box-shadow: 0 0 0 4px rgba(8, 20, 16, .7), 0 8px 18px rgba(0, 0, 0, .3); }
+        .player-seat[data-color="0"] { color: #f3cd68; }
+        .player-seat[data-color="1"] { color: #6ba9d3; }
+        .player-seat[data-color="2"] { color: #55c58c; }
+        .player-seat[data-color="3"] { color: #e89088; }
+        .player-seat[data-color="4"] { color: #c39be8; }
+        .player-seat[data-color="5"] { color: #82cbd0; }
         .table-center-overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; pointer-events: none; }
         .table-wordmark { color: rgba(0, 0, 0, .3); font-size: 1.5em; font-weight: 700; letter-spacing: 5px; text-indent: 5px; line-height: 1; }
-        .table-center-overlay .btn-add-player { min-width: 116px; margin: 0; white-space: nowrap; pointer-events: auto; background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
+        .player-detail-panel { position: absolute; left: 50%; top: 50%; z-index: 60; display: grid; gap: 10px; width: min(320px, calc(100% - 40px)); padding: 14px 16px; box-sizing: border-box; border: 2px solid #081811; border-radius: var(--radius-control); background: rgba(20, 48, 40, .96); box-shadow: 0 0 0 3px rgba(8, 20, 16, .58), 0 16px 30px rgba(0, 0, 0, .42), inset 0 1px rgba(255, 255, 255, .18); color: var(--color-text); pointer-events: auto; transform: translate(-50%, -25%); }
+        .player-detail-panel[hidden] { display: none; }
+        .player-detail-name { font-size: 1rem; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+        .player-detail-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        .player-detail-stat { display: grid; gap: 2px; min-width: 0; text-align: center; }
+        .player-detail-stat-label { color: var(--color-text-muted); font-size: .72rem; }
+        .player-detail-stat-value { color: var(--color-chip); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+        .player-detail-panel.is-entering { animation: playerDetailIn 180ms ease-out both; }
+        @keyframes playerDetailIn { from { opacity: 0; transform: translate(-50%, -25%) scale(.98); } to { opacity: 1; transform: translate(-50%, -25%) scale(1); } }
+        .table-center-overlay .btn-add-player { position: absolute; left: 50%; top: calc(50% + 62px); z-index: 31; min-width: 116px; margin: 0; white-space: nowrap; pointer-events: auto; transform: translateX(-50%); background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
         .table-center-overlay .btn-add-player:hover,
-        .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: none; }
-        .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: scale(.97); }
+        .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: translateX(-50%); }
+        .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: translateX(-50%) scale(.97); }
         .confirm-modal-content { display: flex; flex-direction: column; width: min(820px, calc(100% - 32px)); max-width: 820px; max-height: 88dvh; margin: 6vh auto; padding: 0; overflow: hidden; }
         .confirm-modal-header { padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--color-border); }
         .confirm-modal-header h3 { margin: 0 0 var(--space-2); }
@@ -442,10 +468,10 @@
         html[data-poker-theme="liquid"] .btn:active,
         html[data-poker-theme="liquid"] .btn-main:active,
         html[data-poker-theme="liquid"] .btn-add-player:active { transform: scale(.975); }
-        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player { background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player { position: absolute; left: 50%; top: calc(50% + 62px); z-index: 31; transform: translateX(-50%); background: rgba(115, 125, 121, .16); color: rgba(244, 247, 245, .58); border: 1px dashed rgba(225, 234, 230, .42); box-shadow: none; }
         html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:hover,
-        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: none; }
-        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: scale(.97); }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:focus-visible { background: rgba(150, 160, 156, .2); color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .68); box-shadow: var(--focus-ring); transform: translateX(-50%); }
+        html[data-poker-theme="liquid"] .table-center-overlay .btn-add-player:active { background: #f4f7f5; color: #17342b; border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); transform: translateX(-50%) scale(.97); }
         html[data-poker-theme="liquid"] .btn-danger { background: var(--color-danger); }
         html[data-poker-theme="liquid"] .btn-success { background: rgba(52, 149, 99, .82); }
         html[data-poker-theme="liquid"] .btn-warning { background: rgba(224, 169, 63, .88); }
@@ -729,9 +755,19 @@
                 </div>
             </div>
             <div class="poker-table-container">
-                <div class="poker-table" id="pokerTable"></div>
+                <div class="poker-table" id="pokerTable">
+                    <div class="player-seat-grid" id="playerSeatGrid" aria-label="牌桌玩家"></div>
+                </div>
                 <div class="table-center-overlay">
-                    <span class="table-wordmark" aria-hidden="true">POKER</span>
+                    <span class="table-wordmark" id="tableWordmark" aria-hidden="true">POKER</span>
+                    <div class="player-detail-panel" id="playerDetailPanel" aria-live="polite" hidden>
+                        <div class="player-detail-name" id="playerDetailName"></div>
+                        <div class="player-detail-stats">
+                            <div class="player-detail-stat"><span class="player-detail-stat-label">公共取籌</span><strong class="player-detail-stat-value" id="playerDetailPublic">0</strong></div>
+                            <div class="player-detail-stat"><span class="player-detail-stat-label">借出次數</span><strong class="player-detail-stat-value" id="playerDetailOut">0</strong></div>
+                            <div class="player-detail-stat"><span class="player-detail-stat-label">借入次數</span><strong class="player-detail-stat-value" id="playerDetailIn">0</strong></div>
+                        </div>
+                    </div>
                     <button class="btn-add-player" onclick="openAddPlayerModal()">加入玩家</button>
                 </div>
             </div>
@@ -2228,40 +2264,111 @@
         return canOpen;
     }
 
-    // 第二點修復 + T04：座位渲染與 select 渲染拆開（Bug D-1）
-    // 橫放橢圓形座位 (10 個位置) - 手機友好
-    const SEATS = [
-        { top: '50%', left: '5%' },    // 1 - 左側中間
-        { top: '20%', left: '15%' },   // 2 - 左上
-        { top: '10%', left: '35%' },   // 3 - 上左
-        { top: '10%', left: '65%' },   // 4 - 上右
-        { top: '20%', left: '85%' },   // 5 - 右上
-        { top: '50%', left: '95%' },   // 6 - 右側中間
-        { top: '80%', left: '85%' },   // 7 - 右下
-        { top: '90%', left: '65%' },   // 8 - 下右
-        { top: '90%', left: '35%' },   // 9 - 下左
-        { top: '80%', left: '15%' }    // 10 - 左下
+    // T04：座位渲染與 select 渲染拆開（Bug D-1）。座位沿牌桌橢圓邊緣排列，
+    // 使用百分比座標讓桌面與手機版維持相同的相對位置。
+    let activePlayerId = null;
+    let playerDetailTimer = null;
+    const SEAT_POSITIONS = [
+        { left: '10%', top: '31%' },  // a
+        { left: '8%', top: '50%' },   // b
+        { left: '10%', top: '69%' },  // c
+        { left: '25%', top: '86%' },  // d
+        { left: '42%', top: '92%' },  // e
+        { left: '58%', top: '92%' },  // f
+        { left: '75%', top: '86%' },  // g
+        { left: '90%', top: '69%' },  // h
+        { left: '92%', top: '50%' },  // i
+        { left: '25%', top: '12%' },  // 1
+        { left: '50%', top: '8%' },   // 2
+        { left: '75%', top: '12%' }   // 3
     ];
+
+    function playerInitial(name) {
+        const text = String(name || '').trim();
+        return Array.from(text)[0] || '?';
+    }
+
+    function playerColorIndex(id, initial, usedColors) {
+        const paletteSize = 6;
+        let hash = 0;
+        String(id || initial).split('').forEach(ch => { hash = (hash * 31 + ch.charCodeAt(0)) % paletteSize; });
+        let color = hash;
+        while (usedColors.has(color)) color = (color + 1) % paletteSize;
+        usedColors.add(color);
+        return color;
+    }
+
+    function hidePlayerDetail() {
+        activePlayerId = null;
+        if (playerDetailTimer) {
+            clearTimeout(playerDetailTimer);
+            playerDetailTimer = null;
+        }
+        const panel = document.getElementById('playerDetailPanel');
+        const wordmark = document.getElementById('tableWordmark');
+        if (panel) panel.hidden = true;
+        if (wordmark) wordmark.hidden = false;
+        document.querySelectorAll('.player-seat.is-selected').forEach(seat => seat.classList.remove('is-selected'));
+    }
+
+    function showPlayerDetail(playerId) {
+        const player = PokerChipState.findPlayerById(players, playerId);
+        if (!player) return;
+        activePlayerId = playerId;
+        renderSeats();
+        if (playerDetailTimer) clearTimeout(playerDetailTimer);
+        playerDetailTimer = setTimeout(hidePlayerDetail, 3000);
+    }
+
+    function updatePlayerDetail(player) {
+        const panel = document.getElementById('playerDetailPanel');
+        const wordmark = document.getElementById('tableWordmark');
+        if (!panel || !wordmark) return;
+        if (!player) {
+            panel.hidden = true;
+            wordmark.hidden = false;
+            return;
+        }
+        document.getElementById('playerDetailName').textContent = player.name;
+        document.getElementById('playerDetailPublic').textContent = player.publicBorrowCount;
+        document.getElementById('playerDetailOut').textContent = player.borrowOutCount;
+        document.getElementById('playerDetailIn').textContent = player.borrowInCount;
+        wordmark.hidden = true;
+        panel.hidden = false;
+        panel.classList.remove('is-entering');
+        void panel.offsetWidth;
+        panel.classList.add('is-entering');
+    }
 
     // 只重渲染牌桌座位與 stats（交易後呼叫，不動 select → Bug D-1）
     function renderSeats() {
-        const table = document.getElementById('pokerTable');
-        table.innerHTML = '';
+        const grid = document.getElementById('playerSeatGrid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        const colorsByInitial = {};
         players.forEach((p, i) => {
-            const pos = SEATS[i % 10];
-            const spot = document.createElement('div');
-            spot.className = 'player-spot';
-            spot.style.top = pos.top;
-            spot.style.left = pos.left;
-            spot.innerHTML = `
-                <div>${escapeHtml(p.name)}</div>
-                <div class="player-stats">
-                    <div>公共：${p.publicBorrowCount}</div>
-                    <div>借出：${p.borrowOutCount} | 借入：${p.borrowInCount}</div>
-                </div>
-            `;
-            table.appendChild(spot);
+            const initial = playerInitial(p.name);
+            const usedColors = colorsByInitial[initial] || (colorsByInitial[initial] = new Set());
+            const seat = document.createElement('button');
+            seat.type = 'button';
+            seat.className = 'player-seat' + (p.id === activePlayerId ? ' is-selected' : '');
+            const position = SEAT_POSITIONS[i % SEAT_POSITIONS.length];
+            seat.style.setProperty('--seat-left', position.left);
+            seat.style.setProperty('--seat-top', position.top);
+            seat.dataset.color = playerColorIndex(p.id, initial, usedColors);
+            seat.textContent = initial;
+            seat.title = p.name;
+            seat.setAttribute('aria-label', '查看 ' + p.name + ' 的玩家資訊');
+            seat.addEventListener('click', () => showPlayerDetail(p.id));
+            grid.appendChild(seat);
         });
+
+        const activePlayer = PokerChipState.findPlayerById(players, activePlayerId);
+        if (!activePlayer && activePlayerId) {
+            activePlayerId = null;
+            if (playerDetailTimer) clearTimeout(playerDetailTimer);
+        }
+        updatePlayerDetail(activePlayer);
     }
 
     // 重建玩家 select（玩家增減時呼叫；以 id 為值；保留先前選中 → Bug D-1）
